@@ -28,7 +28,12 @@ function loadEnv($filePath)
 
         // Handle JSON values
         if ((str_starts_with($value, '{') && str_ends_with($value, '}')) || (str_starts_with($value, '[') && str_ends_with($value, ']'))) {
-            $value = json_decode($value, true);
+            $decodedValue = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $value = $decodedValue;
+            } else {
+                throw new Exception("خطای JSON در مقدار: $key");
+            }
         }
 
         // Populate $_ENV and $GLOBALS
@@ -40,18 +45,40 @@ function loadEnv($filePath)
 }
 
 // Load .env file
-loadEnv(__DIR__ . '/.env');
+loadEnv(__DIR__ . '/data.env');
 
-// Use .env value
+// Use .env values
 $GLOBALS['botToken'] = $_ENV['BOT_TOKEN'];
 $adminChatId = $_ENV['ADMIN_CHAT_ID'];
 $url = $_ENV['URL'];
 $dbPath = $_ENV['DB_PATH'];
-$jsonheaders = json_decode($_ENV['HEADERS'], true);;
+
+$jsonHeaders = $_ENV['HEADERS'];
+
+// Initialize $headers array
 $headers = [];
-foreach ($jsonheaders as $key => $value) {
-    $headers[] = "$key: $value";
+
+// Check if headers are valid JSON
+// Check if $jsonHeaders is already an array
+if (is_array($jsonHeaders)) {
+    $headers = [];
+    foreach ($jsonHeaders as $key => $value) {
+        $headers[] = "$key: $value";
+    }
+} else {
+    // Decode if it's a JSON string
+    $decodedHeaders = json_decode($jsonHeaders, true);
+    if (json_last_error() === JSON_ERROR_NONE) {
+        $headers = [];
+        foreach ($decodedHeaders as $key => $value) {
+            $headers[] = "$key: $value";
+        }
+    } else {
+        throw new Exception("خطا در پردازش JSON برای HEADERS.");
+    }
 }
+
+print_r($headers); // خروجی برای بررسی
 
 // Create and connect database
 function initDatabase()
@@ -318,6 +345,7 @@ if (isset($update['message'])) {
             ];
             saveUserTrip($chat_id, $data);
             sendMessage($chat_id, "اطلاعات سفر شما با موفقیت ثبت شد.");
+            processUserTrips($chat_id);
         } else {
             sendMessage($chat_id, "فرمت دستور صحیح نیست. لطفاً همه مقادیر را وارد کنید.");
         }
