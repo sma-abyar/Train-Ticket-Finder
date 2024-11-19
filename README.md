@@ -56,7 +56,7 @@ This project is a **Telegram bot** designed to manage train ticket notifications
 ## Project Structure
 
 ```
-train-ticket-crawler-bot/
+train-ticket-finder/
 ├── bot.php            # Main bot logic
 ├── .env               # Environment variables
 ├── users.db           # SQLite database
