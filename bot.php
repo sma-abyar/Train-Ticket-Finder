@@ -140,13 +140,13 @@ function getUserTrips($chat_id)
 
 
 // register new user
-function registerUser($chat_id)
+function registerUser($chat_id, $username)
 {
     $db = initDatabase();
     $stmt = $db->prepare("INSERT OR IGNORE INTO users (chat_id) VALUES (:chat_id)");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
     $stmt->execute();
-    sendMessage($GLOBALS['adminChatId'], "کاربر جدید با آیدی: $chat_id\nبرای تأیید دستور زیر را ارسال کنید:\n/approve $chat_id");
+    sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید دستور زیر را ارسال کنید:\n/approve $chat_id");
 }
 
 // approve new user
@@ -314,6 +314,17 @@ function escapeMarkdownV2($text)
     return $text;
 }
 
+
+function getUsernameFromMessage($message) {
+    if (isset($message['from']['username'])) {
+        return '@' . $message['from']['username'];
+    } elseif (isset($message['from']['id'])) {
+        return 'https://t.me/' . $message['from']['id'];
+    } else {
+        return 'Unknown User';
+    }
+}
+
 // handle users requests
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message'])) {
@@ -321,7 +332,9 @@ if (isset($update['message'])) {
     $text = $update['message']['text'];
 
     if ($text === '/start') {
-        registerUser($chat_id);
+        $username = getUsernameFromMessage($update['message']);
+        $username = escapeMarkdownV2($username);
+        registerUser($chat_id, $username);
         sendMessage($chat_id, "درخواست شما ارسال شد.");
     } elseif (strpos($text, '/approve') === 0 && $chat_id == $GLOBALS['adminChatId']) {
         $parts = explode(' ', $text);
