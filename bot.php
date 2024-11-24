@@ -45,7 +45,7 @@ function loadEnv($filePath)
 }
 
 // Load .env file
-loadEnv(__DIR__ . '/data.env');
+loadEnv(__DIR__ . '/.env');
 
 // Use .env values
 $GLOBALS['botToken'] = $_ENV['BOT_TOKEN'];
