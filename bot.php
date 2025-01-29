@@ -367,15 +367,18 @@ if (isset($update['message'])) {
         $username = escapeMarkdownV2($username);
         registerUser($chat_id, $username);
         sendMessage($chat_id, "درخواست شما ارسال شد.");
-    } elseif (strpos($text, '/approve') === 0 && $chat_id == $GLOBALS['adminChatId']) {
+    } 
+    elseif (strpos($text, '/approve') === 0 && $chat_id == $GLOBALS['adminChatId']) {
         $parts = explode(' ', $text);
         if (isset($parts[1])) {
             approveUser($parts[1]);
             sendMessage($chat_id, "کاربر {$parts[1]} تأیید شد.");
         }
-    } elseif ($text === '/admintickets') {
+    } 
+    elseif ($text === '/admintickets') {
         processUserTrips($adminChatId);
-    } elseif (strpos($text, '/settrip') === 0) {
+    } 
+    elseif (strpos($text, '/settrip') === 0) {
         $parts = explode(' ', $text);
         if (count($parts) == 8) {
             $data = [
@@ -393,9 +396,114 @@ if (isset($update['message'])) {
         } else {
             sendMessage($chat_id, "فرمت دستور صحیح نیست. لطفاً همه مقادیر را وارد کنید.");
         }
-    } elseif ($text === '/showtrips') {
+    }
+    elseif (strpos($text, '/addtraveler') === 0) {
+        // /addtraveler نام نام‌خانوادگی کدملی نوع‌مسافر جنسیت خدمات نیاز‌به‌ویلچر
+        $parts = explode(' ', $text);
+        if (count($parts) == 8) {
+            $data = [
+                'first_name' => $parts[1],
+                'last_name' => $parts[2],
+                'national_code' => $parts[3],
+                'passenger_type' => (int) $parts[4], // 1: بزرگسال، 2: کودک، 3: نوزاد
+                'gender' => (int) $parts[5], // 1: آقا، 2: خانم
+                'services' => json_decode($parts[6], true) ?? [],
+                'wheelchair' => (int) $parts[7]
+            ];
+            
+            try {
+                addTraveler($chat_id, $data);
+                $typeText = getPassengerTypeText($data['passenger_type']);
+                $genderText = getGenderText($data['gender']);
+                sendMessage($chat_id, "مسافر *{$data['first_name']} {$data['last_name']}* با مشخصات زیر اضافه شد:\n"
+                    . "نوع مسافر: $typeText\n"
+                    . "جنسیت: $genderText\n"
+                    . "کد ملی: {$data['national_code']}\n"
+                    . "نیاز به ویلچر: " . ($data['wheelchair'] ? "بله" : "خیر"));
+            } catch (Exception $e) {
+                sendMessage($chat_id, "خطا در ثبت مسافر. لطفاً دوباره تلاش کنید.");
+            }
+        } else {
+            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n"
+                . "/addtraveler علی احمدی 0123456789 1 1 [] 0\n"
+                . "نوع مسافر: 1=بزرگسال، 2=کودک، 3=نوزاد\n"
+                . "جنسیت: 1=آقا، 2=خانم\n"
+                . "خدمات: [] یا [\"service1\",\"service2\"]\n"
+                . "نیاز به ویلچر: 0=خیر، 1=بله");
+        }
+    }
+    elseif (strpos($text, '/addtravelerlist') === 0) {
+        // /addtravelerlist نام‌لیست شماره‌مسافران
+        // مثال: /addtravelerlist خانواده 1,2,3,4
+        $parts = explode(' ', $text, 3);
+        if (count($parts) == 3) {
+            $list_name = $parts[1];
+            $traveler_ids = array_map('intval', explode(',', $parts[2]));
+            
+            try {
+                createTravelerList($chat_id, $list_name, $traveler_ids);
+                sendMessage($chat_id, "لیست مسافران *$list_name* با موفقیت ایجاد شد.");
+            } catch (Exception $e) {
+                sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.");
+            }
+        } else {
+            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/addtravelerlist خانواده 1,2,3,4");
+        }
+    }
+    elseif ($text === '/showtravelers') {
+        $travelers = listTravelers($chat_id);
+        if (empty($travelers)) {
+            sendMessage($chat_id, "شما هنوز هیچ مسافری ثبت نکرده‌اید.");
+            return;
+        }
+        
+        $message = "لیست مسافران شما:\n\n";
+        foreach ($travelers as $traveler) {
+            $typeText = getPassengerTypeText($traveler['passenger_type']);
+            $genderText = getGenderText($traveler['gender']);
+            $message .= "*{$traveler['id']}.* {$traveler['first_name']} {$traveler['last_name']}\n"
+                     . "نوع: $typeText | جنسیت: $genderText\n"
+                     . "کد ملی: {$traveler['national_code']}\n"
+                     . "───────────────\n";
+        }
+        sendMessage($chat_id, $message);
+    }
+    elseif ($text === '/showtravelerlists') {
+        $lists = listTravelerLists($chat_id);
+        if (empty($lists)) {
+            sendMessage($chat_id, "شما هنوز هیچ لیست مسافری ایجاد نکرده‌اید.");
+            return;
+        }
+        
+        $message = "لیست‌های مسافران شما:\n\n";
+        foreach ($lists as $list) {
+            $message .= "*{$list['id']}.* {$list['name']}\n"
+                     . "تعداد مسافران: {$list['member_count']}\n"
+                     . "مسافران: {$list['members']}\n"
+                     . "───────────────\n";
+        }
+        sendMessage($chat_id, $message);
+    }
+    elseif (strpos($text, '/removetraveler') === 0) {
+        $parts = explode(' ', $text);
+        if (isset($parts[1]) && is_numeric($parts[1])) {
+            removeTraveler($chat_id, (int) $parts[1]);
+        } else {
+            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetraveler 1");
+        }
+    }
+    elseif (strpos($text, '/removetravelerlist') === 0) {
+        $parts = explode(' ', $text);
+        if (isset($parts[1]) && is_numeric($parts[1])) {
+            removeTravelerList($chat_id, (int) $parts[1]);
+        } else {
+            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetravelerlist 1");
+        }
+    }
+    elseif ($text === '/showtrips') {
         showUserTrips($chat_id);
-    } elseif (strpos($text, '/removetrip') === 0) {
+    }
+    elseif (strpos($text, '/removetrip') === 0) {
         $parts = explode(' ', $text);
         if (isset($parts[1]) && is_numeric($parts[1])) {
             $trip_id = (int) $parts[1];
@@ -403,8 +511,25 @@ if (isset($update['message'])) {
         } else {
             sendMessage($chat_id, "لطفاً ID سفر را به درستی وارد کنید. مثال: /removetrip 1");
         }
-    } else {
-        sendMessage($chat_id, "دستور نامعتبر است.");
+    }
+    elseif ($text === '/help') {
+        $helpText = "راهنمای دستورات:\n\n"
+                 . "*مدیریت مسافران:*\n"
+                 . "/addtraveler نام نام‌خانوادگی کدملی نوع جنسیت خدمات ویلچر - افزودن مسافر\n"
+                 . "/showtravelers - نمایش لیست مسافران\n"
+                 . "/removetraveler شماره - حذف مسافر\n\n"
+                 . "*مدیریت لیست‌های مسافران:*\n"
+                 . "/addtravelerlist نام‌لیست شماره‌مسافران - ایجاد لیست جدید\n"
+                 . "/showtravelerlists - نمایش همه لیست‌ها\n"
+                 . "/removetravelerlist شماره - حذف لیست\n\n"
+                 . "*مدیریت سفرها:*\n"
+                 . "/settrip مسیر تاریخ‌رفت تاریخ‌برگشت تعداد نوع کوپه فیلتر - تنظیم سفر\n"
+                 . "/showtrips - نمایش سفرها\n"
+                 . "/removetrip شماره - حذف سفر";
+        sendMessage($chat_id, $helpText);
+    }
+    else {
+        sendMessage($chat_id, "دستور نامعتبر است. برای مشاهده راهنما از دستور /help استفاده کنید.");
     }
 }
 
