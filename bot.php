@@ -100,6 +100,36 @@ function initDatabase()
     no_ticket_notif INTEGER, -- error of no train
     bad_data_notif INTEGER -- error of data
 )");
+    // جدول مسافران
+    $db->exec("CREATE TABLE IF NOT EXISTS travelers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    national_code TEXT NOT NULL,
+    passenger_type INTEGER NOT NULL, -- 1: بزرگسال، 2: کودک، 3: نوزاد
+    gender INTEGER NOT NULL, -- 1: آقا، 2: خانم
+    services TEXT, -- JSON array of services
+    wheelchair INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)");
+
+    // جدول لیست‌های مسافران
+    $db->exec("CREATE TABLE IF NOT EXISTS traveler_lists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)");
+
+    // جدول ارتباطی بین لیست‌ها و مسافران
+    $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
+    list_id INTEGER,
+    traveler_id INTEGER,
+    FOREIGN KEY (list_id) REFERENCES traveler_lists(id) ON DELETE CASCADE,
+    FOREIGN KEY (traveler_id) REFERENCES travelers(id) ON DELETE CASCADE,
+    PRIMARY KEY (list_id, traveler_id)
+)");
     return $db;
 }
 
@@ -315,7 +345,8 @@ function escapeMarkdownV2($text)
 }
 
 
-function getUsernameFromMessage($message) {
+function getUsernameFromMessage($message)
+{
     if (isset($message['from']['username'])) {
         return '@' . $message['from']['username'];
     } elseif (isset($message['from']['id'])) {
@@ -410,6 +441,155 @@ function removeUserTrip($chat_id, $trip_id)
         sendMessage($chat_id, "سفر با ID: $trip_id با موفقیت حذف شد.");
     } else {
         sendMessage($chat_id, "سفری با این ID پیدا نشد یا شما اجازه حذف آن را ندارید.");
+    }
+}
+
+// تابع اضافه کردن مسافر جدید
+function addTraveler($chat_id, $data)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("INSERT INTO travelers (
+        chat_id, first_name, last_name, national_code, 
+        passenger_type, gender, services, wheelchair
+    ) VALUES (
+        :chat_id, :first_name, :last_name, :national_code,
+        :passenger_type, :gender, :services, :wheelchair
+    )");
+
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $stmt->bindValue(':first_name', $data['first_name'], SQLITE3_TEXT);
+    $stmt->bindValue(':last_name', $data['last_name'], SQLITE3_TEXT);
+    $stmt->bindValue(':national_code', $data['national_code'], SQLITE3_TEXT);
+    $stmt->bindValue(':passenger_type', $data['passenger_type'], SQLITE3_INTEGER);
+    $stmt->bindValue(':gender', $data['gender'], SQLITE3_INTEGER);
+    $stmt->bindValue(':services', json_encode($data['services'] ?? []), SQLITE3_TEXT);
+    $stmt->bindValue(':wheelchair', $data['wheelchair'] ?? 0, SQLITE3_INTEGER);
+
+    return $stmt->execute();
+}
+
+// تابع نمایش لیست مسافران
+function listTravelers($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("SELECT * FROM travelers WHERE chat_id = :chat_id ORDER BY created_at DESC");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+
+    $travelers = [];
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $travelers[] = $row;
+    }
+    return $travelers;
+}
+
+// تابع ایجاد لیست جدید مسافران
+function createTravelerList($chat_id, $name, $traveler_ids)
+{
+    $db = initDatabase();
+    $db->exec('BEGIN TRANSACTION');
+
+    try {
+        // ایجاد لیست جدید
+        $stmt = $db->prepare("INSERT INTO traveler_lists (chat_id, name) VALUES (:chat_id, :name)");
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->bindValue(':name', $name, SQLITE3_TEXT);
+        $stmt->execute();
+
+        $list_id = $db->lastInsertRowID();
+
+        // اضافه کردن مسافران به لیست
+        $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
+        foreach ($traveler_ids as $traveler_id) {
+            $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+            $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
+            $stmt->execute();
+        }
+
+        $db->exec('COMMIT');
+        return true;
+    } catch (Exception $e) {
+        $db->exec('ROLLBACK');
+        throw $e;
+    }
+}
+
+// تابع نمایش لیست‌های مسافران
+function listTravelerLists($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("
+        SELECT 
+            tl.id,
+            tl.name,
+            GROUP_CONCAT(t.first_name || ' ' || t.last_name) as members,
+            COUNT(tlm.traveler_id) as member_count
+        FROM traveler_lists tl
+        LEFT JOIN traveler_list_members tlm ON tl.id = tlm.list_id
+        LEFT JOIN travelers t ON tlm.traveler_id = t.id
+        WHERE tl.chat_id = :chat_id
+        GROUP BY tl.id
+        ORDER BY tl.created_at DESC
+    ");
+
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+
+    $lists = [];
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+        $lists[] = $row;
+    }
+    return $lists;
+}
+
+// تابع کمکی برای تبدیل نوع مسافر به متن
+function getPassengerTypeText($type)
+{
+    switch ($type) {
+        case 1: return "بزرگسال";
+        case 2: return "کودک";
+        case 3: return "نوزاد";
+        default: return "نامشخص";
+    }
+}
+
+// تابع کمکی برای تبدیل جنسیت به متن
+function getGenderText($gender)
+{
+    switch ($gender) {
+        case 1: return "آقا";
+        case 2: return "خانم";
+        default: return "نامشخص";
+    }
+}
+
+// Remove traveler function
+function removeTraveler($chat_id, $traveler_id) {
+    $db = initDatabase();
+    $stmt = $db->prepare("DELETE FROM travelers WHERE id = :id AND chat_id = :chat_id");
+    $stmt->bindValue(':id', $traveler_id, SQLITE3_INTEGER);
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+    
+    if ($db->changes() > 0) {
+        sendMessage($chat_id, "مسافر با شماره $traveler_id با موفقیت حذف شد.");
+    } else {
+        sendMessage($chat_id, "مسافری با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
+    }
+}
+
+// Remove traveler list function
+function removeTravelerList($chat_id, $list_id) {
+    $db = initDatabase();
+    $stmt = $db->prepare("DELETE FROM traveler_lists WHERE id = :id AND chat_id = :chat_id");
+    $stmt->bindValue(':id', $list_id, SQLITE3_INTEGER);
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+    
+    if ($db->changes() > 0) {
+        sendMessage($chat_id, "لیست مسافران با شماره $list_id با موفقیت حذف شد.");
+    } else {
+        sendMessage($chat_id, "لیستی با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
     }
 }
 ?>
