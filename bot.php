@@ -141,38 +141,44 @@ function initDatabase()
     return $db;
 }
 
-// State management functions
-function setState($chat_id, $state, $temp_data = [])
+function setUserState($chat_id, $state, $temp_data = null)
 {
-    $db = initDatabase();
-    $stmt = $db->prepare("INSERT OR REPLACE INTO user_states (chat_id, current_state, temp_data, last_update) 
-                         VALUES (:chat_id, :state, :temp_data, CURRENT_TIMESTAMP)");
+    global $dbPath;
+    $db = new SQLite3($dbPath);
+
+    $temp_data_json = $temp_data ? json_encode($temp_data) : null;
+
+    $stmt = $db->prepare("INSERT INTO user_states (chat_id, current_state, temp_data, last_update) 
+        VALUES (:chat_id, :current_state, :temp_data, CURRENT_TIMESTAMP)
+        ON CONFLICT(chat_id) DO UPDATE SET current_state = excluded.current_state, temp_data = excluded.temp_data, last_update = CURRENT_TIMESTAMP");
+
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-    $stmt->bindValue(':state', $state, SQLITE3_TEXT);
-    $stmt->bindValue(':temp_data', json_encode($temp_data), SQLITE3_TEXT);
+    $stmt->bindValue(':current_state', $state, SQLITE3_TEXT);
+    $stmt->bindValue(':temp_data', $temp_data_json, SQLITE3_TEXT);
     $stmt->execute();
 }
 
-function getState($chat_id)
+function getUserState($chat_id)
 {
-    $db = initDatabase();
+    global $dbPath;
+    $db = new SQLite3($dbPath);
+
     $stmt = $db->prepare("SELECT current_state, temp_data FROM user_states WHERE chat_id = :chat_id");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-    $result = $stmt->execute();
-    $row = $result->fetchArray(SQLITE3_ASSOC);
-    
-    if ($row) {
-        return [
-            'state' => $row['current_state'],
-            'temp_data' => json_decode($row['temp_data'], true)
-        ];
+    $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if ($result) {
+        $result['temp_data'] = $result['temp_data'] ? json_decode($result['temp_data'], true) : null;
+        return $result;
     }
     return null;
 }
 
-function clearState($chat_id)
+function clearUserState($chat_id)
 {
-    $db = initDatabase();
+    global $dbPath;
+    $db = new SQLite3($dbPath);
+
     $stmt = $db->prepare("DELETE FROM user_states WHERE chat_id = :chat_id");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
     $stmt->execute();
@@ -401,167 +407,388 @@ function getUsernameFromMessage($message)
     }
 }
 
-// handle users requests
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message'])) {
     $chat_id = $update['message']['chat']['id'];
     $text = $update['message']['text'];
 
-    if ($text === '/start') {
-        $username = getUsernameFromMessage($update['message']);
-        $username = escapeMarkdownV2($username);
-        registerUser($chat_id, $username);
-        sendMessage($chat_id, "درخواست شما ارسال شد.");
-    } elseif (strpos($text, '/approve') === 0 && $chat_id == $GLOBALS['adminChatId']) {
-        $parts = explode(' ', $text);
-        if (isset($parts[1])) {
-            approveUser($parts[1]);
-            sendMessage($chat_id, "کاربر {$parts[1]} تأیید شد.");
+    // Handle new commands and cancel current state if needed
+    if (strpos($text, '/') === 0 && $text !== '/help') {
+        $userState = getUserState($chat_id);
+        if ($userState && isset($userState['current_state'])) {
+            clearUserState($chat_id);
+            sendMessage($chat_id, "عملیات قبلی لغو شد. در حال پردازش دستور جدید...");
         }
+    }
+
+    // Handle commands and state-based interactions
+    if ($text === '/start') {
+        handleStartCommand($chat_id, $username, $update);
+    } elseif (strpos($text, '/approve') === 0 && $chat_id == $GLOBALS['adminChatId']) {
+        handleApproveCommand($chat_id, $text);
     } elseif ($text === '/admintickets') {
         processUserTrips($adminChatId);
     } elseif (strpos($text, '/settrip') === 0) {
-        $parts = explode(' ', $text);
-        if (count($parts) == 8) {
-            $data = [
-                'route' => $parts[1],
-                'date' => $parts[2],
-                'return_date' => $parts[3],
-                'count' => (int) $parts[4],
-                'type' => (int) $parts[5],
-                'coupe' => (int) $parts[6],
-                'filter' => (int) $parts[7]
-            ];
-            saveUserTrip($chat_id, $data);
-            sendMessage($chat_id, "اطلاعات سفر شما با موفقیت ثبت شد.");
-            processUserTrips($chat_id);
-        } else {
-            sendMessage($chat_id, "فرمت دستور صحیح نیست. لطفاً همه مقادیر را وارد کنید.");
-        }
+        handleSetTripCommand($chat_id);
     } elseif (strpos($text, '/addtraveler') === 0) {
-        // /addtraveler نام نام‌خانوادگی کدملی نوع‌مسافر جنسیت خدمات نیاز‌به‌ویلچر
-        $parts = explode(' ', $text);
-        if (count($parts) == 8) {
-            $data = [
-                'first_name' => $parts[1],
-                'last_name' => $parts[2],
-                'national_code' => $parts[3],
-                'passenger_type' => (int) $parts[4], // 1: بزرگسال، 2: کودک، 3: نوزاد
-                'gender' => (int) $parts[5], // 1: آقا، 2: خانم
-                'services' => json_decode($parts[6], true) ?? [],
-                'wheelchair' => (int) $parts[7]
-            ];
-
-            try {
-                addTraveler($chat_id, $data);
-                $typeText = getPassengerTypeText($data['passenger_type']);
-                $genderText = getGenderText($data['gender']);
-                sendMessage($chat_id, "مسافر *{$data['first_name']} {$data['last_name']}* با مشخصات زیر اضافه شد:\n"
-                    . "نوع مسافر: $typeText\n"
-                    . "جنسیت: $genderText\n"
-                    . "کد ملی: {$data['national_code']}\n"
-                    . "نیاز به ویلچر: " . ($data['wheelchair'] ? "بله" : "خیر"));
-            } catch (Exception $e) {
-                sendMessage($chat_id, "خطا در ثبت مسافر. لطفاً دوباره تلاش کنید.");
-            }
-        } else {
-            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n"
-                . "/addtraveler علی احمدی 0123456789 1 1 [] 0\n"
-                . "نوع مسافر: 1=بزرگسال، 2=کودک، 3=نوزاد\n"
-                . "جنسیت: 1=آقا، 2=خانم\n"
-                . "خدمات: [] یا [\"service1\",\"service2\"]\n"
-                . "نیاز به ویلچر: 0=خیر، 1=بله");
-        }
+        handleAddTravelerCommand($chat_id);
     } elseif (strpos($text, '/addtravelerlist') === 0) {
-        // /addtravelerlist نام‌لیست شماره‌مسافران
-        // مثال: /addtravelerlist خانواده 1,2,3,4
-        $parts = explode(' ', $text, 3);
-        if (count($parts) == 3) {
-            $list_name = $parts[1];
-            $traveler_ids = array_map('intval', explode(',', $parts[2]));
-
-            try {
-                createTravelerList($chat_id, $list_name, $traveler_ids);
-                sendMessage($chat_id, "لیست مسافران *$list_name* با موفقیت ایجاد شد.");
-            } catch (Exception $e) {
-                sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.");
-            }
-        } else {
-            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/addtravelerlist خانواده 1,2,3,4");
-        }
+        handleAddTravelerListCommand($chat_id);
     } elseif ($text === '/showtravelers') {
-        $travelers = listTravelers($chat_id);
-        if (empty($travelers)) {
-            sendMessage($chat_id, "شما هنوز هیچ مسافری ثبت نکرده‌اید.");
-            return;
-        }
-
-        $message = "لیست مسافران شما:\n\n";
-        foreach ($travelers as $traveler) {
-            $typeText = getPassengerTypeText($traveler['passenger_type']);
-            $genderText = getGenderText($traveler['gender']);
-            $message .= "*{$traveler['id']}.* {$traveler['first_name']} {$traveler['last_name']}\n"
-                . "نوع: $typeText | جنسیت: $genderText\n"
-                . "کد ملی: {$traveler['national_code']}\n"
-                . "───────────────\n";
-        }
-        sendMessage($chat_id, $message);
+        handleShowTravelersCommand($chat_id);
     } elseif ($text === '/showtravelerlists') {
-        $lists = listTravelerLists($chat_id);
-        if (empty($lists)) {
-            sendMessage($chat_id, "شما هنوز هیچ لیست مسافری ایجاد نکرده‌اید.");
-            return;
-        }
-
-        $message = "لیست‌های مسافران شما:\n\n";
-        foreach ($lists as $list) {
-            $message .= "*{$list['id']}.* {$list['name']}\n"
-                . "تعداد مسافران: {$list['member_count']}\n"
-                . "مسافران: {$list['members']}\n"
-                . "───────────────\n";
-        }
-        sendMessage($chat_id, $message);
+        handleShowTravelerListsCommand($chat_id);
     } elseif (strpos($text, '/removetraveler') === 0) {
-        $parts = explode(' ', $text);
-        if (isset($parts[1]) && is_numeric($parts[1])) {
-            removeTraveler($chat_id, (int) $parts[1]);
-        } else {
-            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetraveler 1");
-        }
+        handleRemoveTravelerCommand($chat_id, $text);
     } elseif (strpos($text, '/removetravelerlist') === 0) {
-        $parts = explode(' ', $text);
-        if (isset($parts[1]) && is_numeric($parts[1])) {
-            removeTravelerList($chat_id, (int) $parts[1]);
-        } else {
-            sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetravelerlist 1");
-        }
+        handleRemoveTravelerListCommand($chat_id, $text);
     } elseif ($text === '/showtrips') {
         showUserTrips($chat_id);
     } elseif (strpos($text, '/removetrip') === 0) {
-        $parts = explode(' ', $text);
-        if (isset($parts[1]) && is_numeric($parts[1])) {
-            $trip_id = (int) $parts[1];
-            removeUserTrip($chat_id, $trip_id);
-        } else {
-            sendMessage($chat_id, "لطفاً ID سفر را به درستی وارد کنید. مثال: /removetrip 1");
-        }
+        handleRemoveTripCommand($chat_id, $text);
     } elseif ($text === '/help') {
-        $helpText = "راهنمای دستورات:\n\n"
-            . "*مدیریت مسافران:*\n"
-            . "/addtraveler نام نام‌خانوادگی کدملی نوع جنسیت خدمات ویلچر - افزودن مسافر\n"
-            . "/showtravelers - نمایش لیست مسافران\n"
-            . "/removetraveler شماره - حذف مسافر\n\n"
-            . "*مدیریت لیست‌های مسافران:*\n"
-            . "/addtravelerlist نام‌لیست شماره‌مسافران - ایجاد لیست جدید\n"
-            . "/showtravelerlists - نمایش همه لیست‌ها\n"
-            . "/removetravelerlist شماره - حذف لیست\n\n"
-            . "*مدیریت سفرها:*\n"
-            . "/settrip مسیر تاریخ‌رفت تاریخ‌برگشت تعداد نوع کوپه فیلتر - تنظیم سفر\n"
-            . "/showtrips - نمایش سفرها\n"
-            . "/removetrip شماره - حذف سفر";
-        sendMessage($chat_id, $helpText);
+        handleHelpCommand($chat_id);
     } else {
-        sendMessage($chat_id, "دستور نامعتبر است. برای مشاهده راهنما از دستور /help استفاده کنید.");
+        $userState = getUserState($chat_id);
+        if (!$userState || !isset($userState['current_state'])) {
+            sendMessage($chat_id, "دستور نامعتبر است. برای مشاهده راهنما از دستور /help استفاده کنید.");
+        }
+    }
+
+    // Handle state-based interactions
+    $userState = getUserState($chat_id);
+    if ($userState && isset($userState['current_state'])) {
+        switch ($userState['current_state']) {
+            case 'SET_TRIP_ROUTE':
+                handleSetTripRoute($chat_id, $text);
+                break;
+            case 'SET_TRIP_DATE':
+                handleSetTripDate($chat_id, $text);
+                break;
+            case 'SET_TRIP_RETURN_DATE':
+                handleSetTripReturnDate($chat_id, $text);
+                break;
+            case 'SET_TRIP_COUNT':
+                handleSetTripCount($chat_id, $text);
+                break;
+            case 'SET_TRIP_TYPE':
+                handleSetTripType($chat_id, $text);
+                break;
+            case 'SET_TRIP_COUPE':
+                handleSetTripCoupe($chat_id, $text);
+                break;
+            case 'SET_TRIP_FILTER':
+                handleSetTripFilter($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_FIRST_NAME':
+                handleSetTravelerFirstName($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_LAST_NAME':
+                handleSetTravelerLastName($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_NATIONAL_CODE':
+                handleSetTravelerNationalCode($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_PASSENGER_TYPE':
+                handleSetTravelerPassengerType($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_GENDER':
+                handleSetTravelerGender($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_SERVICES':
+                handleSetTravelerServices($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_WHEELCHAIR':
+                handleSetTravelerWheelchair($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_LIST_NAME':
+                handleSetTravelerListName($chat_id, $text);
+                break;
+            case 'SET_TRAVELER_LIST_MEMBERS':
+                handleSetTravelerListMembers($chat_id, $text);
+                break;
+            default:
+                sendMessage($chat_id, "در حال پردازش درخواست شما...");
+        }
+    }
+}
+
+function handleStartCommand($chat_id, $username, $update) {
+    $username = getUsernameFromMessage($update['message']);
+    $username = escapeMarkdownV2($username);
+    registerUser($chat_id, $username);
+    sendMessage($chat_id, "درخواست شما ارسال شد.");
+}
+
+function handleApproveCommand($chat_id, $text) {
+    $parts = explode(' ', $text);
+    if (isset($parts[1])) {
+        approveUser($parts[1]);
+        sendMessage($chat_id, "کاربر {$parts[1]} تأیید شد.");
+    }
+}
+
+function handleRemoveTripCommand($chat_id, $text) {
+    $parts = explode(' ', $text);
+    if (isset($parts[1]) && is_numeric($parts[1])) {
+        $trip_id = (int) $parts[1];
+        removeUserTrip($chat_id, $trip_id);
+        sendMessage($chat_id, "سفر با ID {$trip_id} حذف شد.");
+    } else {
+        sendMessage($chat_id, "لطفاً ID سفر را به درستی وارد کنید. مثال: /removetrip 1");
+    }
+}
+
+function handleHelpCommand($chat_id) {
+    $helpText = "راهنمای دستورات:\n\n"
+        . "*مدیریت مسافران:*\n"
+        . "/addtraveler - افزودن مسافر\n"
+        . "/showtravelers - نمایش لیست مسافران\n"
+        . "/removetraveler شماره - حذف مسافر\n\n"
+        . "*مدیریت لیست‌های مسافران:*\n"
+        . "/addtravelerlist - ایجاد لیست جدید\n"
+        . "/showtravelerlists - نمایش همه لیست‌ها\n"
+        . "/removetravelerlist شماره - حذف لیست\n\n"
+        . "*مدیریت سفرها:*\n"
+        . "/settrip - تنظیم سفر\n"
+        . "/showtrips - نمایش سفرها\n"
+        . "/removetrip شماره - حذف سفر";
+    sendMessage($chat_id, $helpText);
+}
+
+function handleSetTripCommand($chat_id) {
+    setUserState($chat_id, 'SET_TRIP_ROUTE');
+    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: تهران-رشت):");
+}
+
+function handleSetTripRoute($chat_id, $text) {
+    $route = $text;
+    setUserState($chat_id, 'SET_TRIP_DATE', ['route' => $route]);
+    sendMessage($chat_id, "لطفاً تاریخ رفت را وارد کنید (مثال: 1403-11-02):");
+}
+
+function handleSetTripDate($chat_id, $text) {
+    $date = $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['date'] = $date;
+    setUserState($chat_id, 'SET_TRIP_RETURN_DATE', $temp_data);
+    sendMessage($chat_id, "لطفاً تاریخ برگشت را وارد کنید (اگر یک طرفه است، خالی بگذارید):");
+}
+
+function handleSetTripReturnDate($chat_id, $text) {
+    $return_date = $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['return_date'] = $return_date;
+    setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
+    sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
+}
+
+function handleSetTripCount($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 1):");
+        return;
+    }
+    $count = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['count'] = $count;
+    setUserState($chat_id, 'SET_TRIP_TYPE', $temp_data);
+    sendMessage($chat_id, "لطفاً نوع بلیط را وارد کنید (0: معمولی, 1: ویژه):");
+}
+
+function handleSetTripType($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+        return;
+    }
+    $type = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['type'] = $type;
+    setUserState($chat_id, 'SET_TRIP_COUPE', $temp_data);
+    sendMessage($chat_id, "لطفاً ترجیح کوپه را وارد کنید (0: خیر, 1: بله):");
+}
+
+function handleSetTripCoupe($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+        return;
+    }
+    $coupe = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['coupe'] = $coupe;
+    setUserState($chat_id, 'SET_TRIP_FILTER', $temp_data);
+    sendMessage($chat_id, "لطفاً فیلتر را وارد کنید (0: بدون فیلتر, 1: با فیلتر):");
+}
+
+function handleSetTripFilter($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+        return;
+    }
+    $filter = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['filter'] = $filter;
+    saveUserTrip($chat_id, $temp_data);
+    sendMessage($chat_id, "اطلاعات سفر شما با موفقیت ثبت شد.");
+    processUserTrips($chat_id);
+    clearUserState($chat_id);
+}
+
+function handleAddTravelerCommand($chat_id) {
+    setUserState($chat_id, 'SET_TRAVELER_FIRST_NAME');
+    sendMessage($chat_id, "لطفاً نام مسافر را وارد کنید:");
+}
+
+function handleSetTravelerFirstName($chat_id, $text) {
+    $first_name = $text;
+    setUserState($chat_id, 'SET_TRAVELER_LAST_NAME', ['first_name' => $first_name]);
+    sendMessage($chat_id, "لطفاً نام‌خانوادگی مسافر را وارد کنید:");
+}
+
+function handleSetTravelerLastName($chat_id, $text) {
+    $last_name = $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['last_name'] = $last_name;
+    setUserState($chat_id, 'SET_TRAVELER_NATIONAL_CODE', $temp_data);
+    sendMessage($chat_id, "لطفاً کد ملی مسافر را وارد کنید:");
+}
+
+function handleSetTravelerNationalCode($chat_id, $text) {
+    $national_code = $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['national_code'] = $national_code;
+    setUserState($chat_id, 'SET_TRAVELER_PASSENGER_TYPE', $temp_data);
+    sendMessage($chat_id, "لطفاً نوع مسافر را وارد کنید (1: بزرگسال، 2: کودک، 3: نوزاد):");
+}
+
+function handleSetTravelerPassengerType($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 1):");
+        return;
+    }
+    $passenger_type = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['passenger_type'] = $passenger_type;
+    setUserState($chat_id, 'SET_TRAVELER_GENDER', $temp_data);
+    sendMessage($chat_id, "لطفاً جنسیت مسافر را وارد کنید (1: آقا، 2: خانم):");
+}
+
+function handleSetTravelerGender($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 1):");
+        return;
+    }
+    $gender = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['gender'] = $gender;
+    setUserState($chat_id, 'SET_TRAVELER_SERVICES', $temp_data);
+    sendMessage($chat_id, "لطفاً خدمات مورد نیاز را وارد کنید (مثال: [] یا [\"service1\",\"service2\"]):");
+}
+
+function handleSetTravelerServices($chat_id, $text) {
+    $services = json_decode($text, true) ?? [];
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['services'] = $services;
+    setUserState($chat_id, 'SET_TRAVELER_WHEELCHAIR', $temp_data);
+    sendMessage($chat_id, "لطفاً نیاز به ویلچر را وارد کنید (0: خیر، 1: بله):");
+}
+
+function handleSetTravelerWheelchair($chat_id, $text) {
+    if (!is_numeric($text)) {
+        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+        return;
+    }
+    $wheelchair = (int) $text;
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['wheelchair'] = $wheelchair;
+    try {
+        addTraveler($chat_id, $temp_data);
+        $typeText = getPassengerTypeText($temp_data['passenger_type']);
+        $genderText = getGenderText($temp_data['gender']);
+        sendMessage($chat_id, "مسافر *{$temp_data['first_name']} {$temp_data['last_name']}* با مشخصات زیر اضافه شد:\n"
+            . "نوع مسافر: $typeText\n"
+            . "جنسیت: $genderText\n"
+            . "کد ملی: {$temp_data['national_code']}\n"
+            . "نیاز به ویلچر: " . ($temp_data['wheelchair'] ? "بله" : "خیر"));
+    } catch (Exception $e) {
+        sendMessage($chat_id, "خطا در ثبت مسافر. لطفاً دوباره تلاش کنید.");
+    }
+    clearUserState($chat_id);
+}
+
+function handleAddTravelerListCommand($chat_id) {
+    setUserState($chat_id, 'SET_TRAVELER_LIST_NAME');
+    sendMessage($chat_id, "لطفاً نام لیست مسافران را وارد کنید:");
+}
+
+function handleSetTravelerListName($chat_id, $text) {
+    $list_name = $text;
+    setUserState($chat_id, 'SET_TRAVELER_LIST_MEMBERS', ['name' => $list_name]);
+    sendMessage($chat_id, "لطفاً شماره‌های مسافران را وارد کنید (مثال: 1,2,3,4):");
+}
+
+function handleSetTravelerListMembers($chat_id, $text) {
+    $traveler_ids = array_map('intval', explode(',', $text));
+    $temp_data = getUserState($chat_id)['temp_data'];
+    try {
+        createTravelerList($chat_id, $temp_data['name'], $traveler_ids);
+        sendMessage($chat_id, "لیست مسافران *{$temp_data['name']}* با موفقیت ایجاد شد.");
+    } catch (Exception $e) {
+        sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.");
+    }
+    clearUserState($chat_id);
+}
+
+function handleShowTravelersCommand($chat_id) {
+    $travelers = listTravelers($chat_id);
+    if (empty($travelers)) {
+        sendMessage($chat_id, "شما هنوز هیچ مسافری ثبت نکرده‌اید.");
+        return;
+    }
+    $message = "لیست مسافران شما:\n\n";
+    foreach ($travelers as $traveler) {
+        $typeText = getPassengerTypeText($traveler['passenger_type']);
+        $genderText = getGenderText($traveler['gender']);
+        $message .= "*{$traveler['id']}.* {$traveler['first_name']} {$traveler['last_name']}\n"
+            . "نوع: $typeText | جنسیت: $genderText\n"
+            . "کد ملی: {$traveler['national_code']}\n"
+            . "───────────────\n";
+    }
+    sendMessage($chat_id, $message);
+}
+
+function handleShowTravelerListsCommand($chat_id) {
+    $lists = listTravelerLists($chat_id);
+    if (empty($lists)) {
+        sendMessage($chat_id, "شما هنوز هیچ لیست مسافری ایجاد نکرده‌اید.");
+        return;
+    }
+    $message = "لیست‌های مسافران شما:\n\n";
+    foreach ($lists as $list) {
+        $message .= "*{$list['id']}.* {$list['name']}\n"
+            . "تعداد مسافران: {$list['member_count']}\n"
+            . "مسافران: {$list['members']}\n"
+            . "───────────────\n";
+    }
+    sendMessage($chat_id, $message);
+}
+
+function handleRemoveTravelerCommand($chat_id, $text) {
+    $parts = explode(' ', $text);
+    if (isset($parts[1]) && is_numeric($parts[1])) {
+        removeTraveler($chat_id, (int) $parts[1]);
+        sendMessage($chat_id, "مسافر با ID {$parts[1]} حذف شد.");
+    } else {
+        sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetraveler 1");
+    }
+}
+
+function handleRemoveTravelerListCommand($chat_id, $text) {
+    $parts = explode(' ', $text);
+    if (isset($parts[1]) && is_numeric($parts[1])) {
+        removeTravelerList($chat_id, (int) $parts[1]);
+        sendMessage($chat_id, "لیست مسافران با ID {$parts[1]} حذف شد.");
+    } else {
+        sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetravelerlist 1");
     }
 }
 
