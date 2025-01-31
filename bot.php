@@ -455,6 +455,48 @@ if (isset($update['message'])) {
         }
     }
 
+    // Handle button clicks
+    switch ($text) {
+        case 'شروع':
+            handleStartCommand($chat_id, $username, $update);
+            break;
+        case 'راهنما':
+            handleHelpCommand($chat_id);
+            break;
+        case 'تنظیم سفر':
+            handleSetTripCommand($chat_id);
+            break;
+        case 'نمایش سفرها':
+            showUserTrips($chat_id);
+            break;
+        case 'افزودن مسافر':
+            handleAddTravelerCommand($chat_id);
+            break;
+        case 'نمایش مسافران':
+            handleShowTravelersCommand($chat_id);
+            break;
+        case 'افزودن لیست مسافران':
+            handleAddTravelerListCommand($chat_id);
+            break;
+        case 'نمایش لیست‌ها':
+            handleShowTravelerListsCommand($chat_id);
+            break;
+        case 'حذف مسافر':
+            sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: /removetraveler 1):");
+            break;
+        case 'حذف لیست':
+            sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: /removetravelerlist 1):");
+            break;
+        case 'حذف سفر':
+            sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: /removetrip 1):");
+            break;
+        default:
+            $userState = getUserState($chat_id);
+            if (!$userState || !isset($userState['current_state'])) {
+                sendMessage($chat_id, "دستور نامعتبر است. برای مشاهده راهنما از دکمه 'راهنما' استفاده کنید.");
+            }
+    }
+
     // Handle state-based interactions
     $userState = getUserState($chat_id);
     if ($userState && isset($userState['current_state'])) {
@@ -513,11 +555,68 @@ if (isset($update['message'])) {
     }
 }
 
+if (isset($update['callback_query'])) {
+    $callback_query = $update['callback_query'];
+    $chat_id = $callback_query['message']['chat']['id'];
+    $data = $callback_query['data']; // This contains the callback_data from the button
+
+    switch ($data) {
+        case 'start':
+            handleStartCommand($chat_id, $username, $update);
+            break;
+        case 'help':
+            handleHelpCommand($chat_id);
+            break;
+        case 'settrip':
+            handleSetTripCommand($chat_id);
+            break;
+        case 'showtrips':
+            showUserTrips($chat_id);
+            break;
+        case 'addtraveler':
+            handleAddTravelerCommand($chat_id);
+            break;
+        case 'showtravelers':
+            handleShowTravelersCommand($chat_id);
+            break;
+        case 'addtravelerlist':
+            handleAddTravelerListCommand($chat_id);
+            break;
+        case 'showtravelerlists':
+            handleShowTravelerListsCommand($chat_id);
+            break;
+        case 'removetraveler':
+            sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: /removetraveler 1):");
+            break;
+        case 'removetravelerlist':
+            sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: /removetravelerlist 1):");
+            break;
+        case 'removetrip':
+            sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: /removetrip 1):");
+            break;
+        default:
+            sendMessage($chat_id, "دستور نامعتبر است. لطفاً دوباره تلاش کنید.");
+    }
+
+    // Acknowledge the callback query
+    $callback_query_id = $callback_query['id'];
+    $url = "https://api.telegram.org/bot{$GLOBALS['botToken']}/answerCallbackQuery";
+    $postData = ['callback_query_id' => $callback_query_id];
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+    curl_exec($ch);
+    curl_close($ch);
+}
+
 function handleStartCommand($chat_id, $username, $update) {
     $username = getUsernameFromMessage($update['message']);
     $username = escapeMarkdownV2($username);
     registerUser($chat_id, $username);
-    sendMessage($chat_id, "درخواست شما ارسال شد.");
+    $keyboard = getMainMenuKeyboard();
+    sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
 }
 
 function handleApproveCommand($chat_id, $text) {
@@ -985,4 +1084,38 @@ function removeTravelerList($chat_id, $list_id)
         sendMessage($chat_id, "لیستی با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
     }
 }
+
+function getMainMenuKeyboard() {
+    return [
+        'keyboard' => [
+            [
+                ['text' => 'شروع'], 
+                ['text' => 'راهنما']
+            ],
+            [
+                ['text' => 'تنظیم سفر'], 
+                ['text' => 'نمایش سفرها']
+            ],
+            [
+                ['text' => 'افزودن مسافر'], 
+                ['text' => 'نمایش مسافران']
+            ],
+            [
+                ['text' => 'افزودن لیست مسافران'], 
+                ['text' => 'نمایش لیست‌ها']
+            ],
+            [
+                ['text' => 'حذف مسافر'], 
+                ['text' => 'حذف لیست']
+            ],
+            [
+                ['text' => 'حذف سفر']
+            ]
+        ],
+        'resize_keyboard' => true, // Resize the keyboard to fit the buttons
+        'one_time_keyboard' => false // Keep the keyboard visible after a button is pressed
+    ];
+}
+
+
 ?>
