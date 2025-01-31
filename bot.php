@@ -409,7 +409,9 @@ function getUsernameFromMessage($message)
 
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
-if (isset($update['message'])) {
+if (isset($update['callback_query'])) {
+    handleCallbackQuery($update['callback_query']);
+} elseif (isset($update['message'])) {
     $chat_id = $update['message']['chat']['id'];
     $text = $update['message']['text'];
 
@@ -579,6 +581,46 @@ if (isset($update['message'])) {
         }
     }
 
+}
+
+function handleCallbackQuery($callback_query)
+{
+    $chat_id = $callback_query['message']['chat']['id'];
+    $data = $callback_query['data'];
+
+    if ($data === 'add_traveler') {
+        // Start the traveler addition process
+        handleAddTravelerCommand($chat_id);
+    } elseif ($data === 'remove_traveler') {
+        // Fetch the list of travelers
+        $travelers = listTravelers($chat_id);
+
+        if (empty($travelers)) {
+            sendMessage($chat_id, "شما هیچ مسافری برای حذف ندارید.");
+            return;
+        }
+
+        // Create inline buttons for each traveler
+        $inlineKeyboard = ['inline_keyboard' => []];
+
+        foreach ($travelers as $traveler) {
+            $inlineKeyboard['inline_keyboard'][] = [
+                ['text' => "{$traveler['first_name']} {$traveler['last_name']}", 'callback_data' => "remove_traveler_{$traveler['id']}"]
+            ];
+        }
+
+        // Send the message with the inline buttons
+        sendMessage($chat_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
+    } elseif (strpos($data, 'remove_traveler_') === 0) {
+        // Extract the traveler ID from the callback data
+        $traveler_id = str_replace('remove_traveler_', '', $data);
+
+        // Call the function to remove the traveler
+        removeTraveler($chat_id, $traveler_id);
+
+        // Notify the user
+        sendMessage($chat_id, "مسافر با موفقیت حذف شد.");
+    }
 }
 
 function handleStartCommand($chat_id, $username, $update)
@@ -832,10 +874,21 @@ function handleSetTravelerListMembers($chat_id, $text)
 function handleShowTravelersCommand($chat_id)
 {
     $travelers = listTravelers($chat_id);
+    
+    // Initialize the inline keyboard with the "افزودن مسافر" button
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'افزودن مسافر', 'callback_data' => 'add_traveler']
+            ]
+        ]
+    ];
+
     if (empty($travelers)) {
-        sendMessage($chat_id, "شما هنوز هیچ مسافری ثبت نکرده‌اید.");
+        sendMessage($chat_id, "شما هنوز هیچ مسافری ثبت نکرده‌اید.", $inlineKeyboard);
         return;
     }
+
     $message = "لیست مسافران شما:\n\n";
     foreach ($travelers as $traveler) {
         $typeText = getPassengerTypeText($traveler['passenger_type']);
@@ -845,9 +898,14 @@ function handleShowTravelersCommand($chat_id)
             . "کد ملی: {$traveler['national_code']}\n"
             . "───────────────\n";
     }
-    sendMessage($chat_id, $message);
-}
 
+    // Add the "حذف مسافر" button if $travelers is not empty
+    $inlineKeyboard['inline_keyboard'][] = [
+        ['text' => 'حذف مسافر', 'callback_data' => 'remove_traveler']
+    ];
+
+    sendMessage($chat_id, $message, $inlineKeyboard);
+}
 function handleShowTravelerListsCommand($chat_id)
 {
     $lists = listTravelerLists($chat_id);
