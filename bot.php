@@ -407,6 +407,7 @@ function getUsernameFromMessage($message)
     }
 }
 
+// Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message'])) {
     $chat_id = $update['message']['chat']['id'];
@@ -428,54 +429,59 @@ if (isset($update['message'])) {
         }
     }
 
+    $userState = getUserState($chat_id);
+
     // Handle commands and button clicks
     switch ($text) {
         case '/start':
         case 'شروع':
-            handleStartCommand($chat_id, $username, $update);
+            setUserState($chat_id, 'START');
             break;
         case '/help':
         case 'راهنما':
-            handleHelpCommand($chat_id);
+            setUserState($chat_id, 'HELP');
             break;
-        case '/settrip':
+        // case '/settrip':
         case 'تنظیم سفر':
-            handleSetTripCommand($chat_id);
+            setUserState($chat_id, 'SET_TRIP');
             break;
-        case '/showtrips':
+        // case '/showtrips':
         case 'نمایش سفرها':
-            showUserTrips($chat_id);
+            setUserState($chat_id, 'SHOW_TRIPS');
             break;
-        case '/addtraveler':
+        // case '/addtraveler':
         case 'افزودن مسافر':
-            handleAddTravelerCommand($chat_id);
+            setUserState($chat_id, 'ADD_TRAVELER');
             break;
-        case '/showtravelers':
+        // case '/showtravelers':
         case 'نمایش مسافران':
-            handleShowTravelersCommand($chat_id);
+            setUserState($chat_id, 'SHOW_TRAVELERS');
             break;
-        case '/addtravelerlist':
+        // case '/addtravelerlist':
         case 'افزودن لیست مسافران':
-            handleAddTravelerListCommand($chat_id);
+            setUserState($chat_id, 'ADD_TRAVELER_LIST');
             break;
-        case '/showtravelerlists':
+        // case '/showtravelerlists':
         case 'نمایش لیست‌های مسافران':
-            handleShowTravelerListsCommand($chat_id);
+            setUserState($chat_id, 'SHOW_TRAVELER_LISTS');
             break;
-        case '/removetraveler':
+        // case '/removetraveler':
         case 'حذف مسافر':
-            sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: /removetraveler 1):");
+            setUserState($chat_id, 'REMOVE_TRAVELER');
+            sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: 1):");
             break;
-        case '/removetravelerlist':
+        // case '/removetravelerlist':
         case 'حذف لیست':
-            sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: /removetravelerlist 1):");
+            setUserState($chat_id, 'REMOVE_TRAVELER_LIST');
+            sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: 1):");
             break;
-        case '/removetrip':
+        // case '/removetrip':
         case 'حذف سفر':
-            sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: /removetrip 1):");
+            setUserState($chat_id, 'REMOVE_TRIP');
+            showUserTrips($chat_id);
+            sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: 1):");
             break;
         default:
-            $userState = getUserState($chat_id);
             if (!$userState || !isset($userState['current_state'])) {
                 sendMessage($chat_id, "دستور نامعتبر است. برای مشاهده راهنما از دستور /help استفاده کنید.");
             }
@@ -485,6 +491,41 @@ if (isset($update['message'])) {
     $userState = getUserState($chat_id);
     if ($userState && isset($userState['current_state'])) {
         switch ($userState['current_state']) {
+            case 'START':
+                handleStartCommand($chat_id, $username, $update);
+                break;
+            case 'HELP':
+                handleHelpCommand($chat_id);
+                break;
+            case 'SET_TRIP':
+                handleSetTripCommand($chat_id);
+                break;
+            case 'SHOW_TRIPS':
+                showUserTrips($chat_id);
+                break;
+            case 'ADD_TRAVELER':
+                handleAddTravelerCommand($chat_id);
+                break;
+            case 'SHOW_TRAVELERS':
+                handleShowTravelersCommand($chat_id);
+                break;
+            case 'ADD_TRAVELER_LIST':
+                handleAddTravelerListCommand($chat_id);
+                break;
+            case 'SHOW_TRAVELER_LISTS':
+                handleShowTravelerListsCommand($chat_id);
+                break;
+            case 'REMOVE_TRAVELER':
+                handleRemoveTravelerCommand($chat_id, $text);
+                clearUserState($chat_id);
+                break;
+            case 'REMOVE_TRAVELER_LIST':
+                handleRemoveTravelerListCommand($chat_id, $text);
+                clearUserState($chat_id);
+                break;
+            case 'REMOVE_TRIP':
+                handleRemoveTripCommand($chat_id, $text);
+                break;
             case 'SET_TRIP_ROUTE':
                 handleSetTripRoute($chat_id, $text);
                 break;
@@ -537,6 +578,7 @@ if (isset($update['message'])) {
                 sendMessage($chat_id, "در حال پردازش درخواست شما...");
         }
     }
+
 }
 
 function handleStartCommand($chat_id, $username, $update)
@@ -559,13 +601,12 @@ function handleApproveCommand($chat_id, $text)
 
 function handleRemoveTripCommand($chat_id, $text)
 {
-    $parts = explode(' ', $text);
-    if (isset($parts[1]) && is_numeric($parts[1])) {
-        $trip_id = (int) $parts[1];
+    if (isset($text) && is_numeric($text)) {
+        $trip_id = (int) $text;
         removeUserTrip($chat_id, $trip_id);
-        sendMessage($chat_id, "سفر با ID {$trip_id} حذف شد.");
+        // sendMessage($chat_id, "سفر با ID {$trip_id} حذف شد.");
     } else {
-        sendMessage($chat_id, "لطفاً ID سفر را به درستی وارد کنید. مثال: /removetrip 1");
+        // sendMessage($chat_id, "لطفاً ID سفر را به درستی وارد کنید. مثال: /removetrip 1");
     }
 }
 
@@ -590,7 +631,7 @@ function handleHelpCommand($chat_id)
 function handleSetTripCommand($chat_id)
 {
     setUserState($chat_id, 'SET_TRIP_ROUTE');
-    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: تهران-رشت):");
+    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):");
 }
 
 function handleSetTripRoute($chat_id, $text)
