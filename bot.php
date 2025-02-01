@@ -630,14 +630,14 @@ function handleCallbackQuery($callback_query)
         $inlineKeyboard = ['inline_keyboard' => []];
         foreach ($lists as $list) {
             $inlineKeyboard['inline_keyboard'][] = [
-                ['text' => $list['name'], 'callback_data' => "remove_traveler_list_{$list['id']}"]
+                ['text' => $list['name'], 'callback_data' => "remove_selected_traveler_list_{$list['id']}"]
             ];
         }
         // Send the message with the inline buttons
         sendMessage($chat_id, "لطفاً لیست مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
-    } elseif (strpos($data, 'remove_traveler_list_') === 0) {
+    } elseif (strpos($data, 'remove_selected_traveler_list_') === 0) {
         // Extract the traveler list ID from the callback data
-        $list_id = str_replace('remove_traveler_list_', '', $data);
+        $list_id = str_replace('remove_selected_traveler_list_', '', $data);
         // Call the function to remove the traveler list
         removeTravelerList($chat_id, $list_id);
         // Notify the user
@@ -675,6 +675,36 @@ function handleCallbackQuery($callback_query)
         removeUserTrip($chat_id, $trip_id);
         // Notify the user
         sendMessage($chat_id, "سفر با موفقیت حذف شد.");
+    }  elseif ($data === 'add_traveler_to_list') {
+        // Start the process to add travelers to a list
+        handleAddTravelerToListCommand($chat_id);
+    } elseif (strpos($data, 'add_traveler_to_list_') === 0) {
+        // Extract the list ID from the callback data
+        $list_id = str_replace('add_traveler_to_list_', '', $data);
+        // Fetch the list of travelers
+        $travelers = listTravelers($chat_id);
+        if (empty($travelers)) {
+            sendMessage($chat_id, "شما هیچ مسافری برای افزودن به لیست ندارید.");
+            return;
+        }
+        // Create inline buttons for each traveler
+        $inlineKeyboard = ['inline_keyboard' => []];
+        foreach ($travelers as $traveler) {
+            $inlineKeyboard['inline_keyboard'][] = [
+                ['text' => "{$traveler['first_name']} {$traveler['last_name']}", 'callback_data' => "add_selected_traveler_to_list_{$list_id}_{$traveler['id']}"]
+            ];
+        }
+        // Send the message with the inline buttons
+        sendMessage($chat_id, "لطفاً مسافری که می‌خواهید به لیست اضافه کنید را انتخاب کنید:", $inlineKeyboard);
+    } elseif (strpos($data, 'add_selected_traveler_to_list_') === 0) {
+        // Extract the list ID and traveler ID from the callback data
+        $parts = explode('_', $data);
+        $list_id = $parts[4];
+        $traveler_id = $parts[5];
+        // Call the function to add the traveler to the list
+        addTravelerToList($chat_id, $list_id, $traveler_id);
+        // Notify the user
+        sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.");
     }
 }
 
@@ -1022,12 +1052,36 @@ function handleShowTravelerListsCommand($chat_id)
             . "───────────────\n";
     }
 
-    // Add the "حذف لیست مسافر" button if $lists is not empty
+    // Add the "حذف لیست مسافر" and "افزودن مسافر به لیست" buttons if $lists is not empty
     $inlineKeyboard['inline_keyboard'][] = [
         ['text' => 'حذف لیست مسافر', 'callback_data' => 'remove_traveler_list']
     ];
+    $inlineKeyboard['inline_keyboard'][] = [
+        ['text' => 'افزودن مسافر به لیست', 'callback_data' => 'add_traveler_to_list']
+    ];
 
     sendMessage($chat_id, $message, $inlineKeyboard);
+}
+
+function handleAddTravelerToListCommand($chat_id)
+{
+    // Fetch the list of traveler lists
+    $lists = listTravelerLists($chat_id);
+    if (empty($lists)) {
+        sendMessage($chat_id, "شما هیچ لیست مسافری برای افزودن مسافر ندارید.");
+        return;
+    }
+
+    // Create inline buttons for each traveler list
+    $inlineKeyboard = ['inline_keyboard' => []];
+    foreach ($lists as $list) {
+        $inlineKeyboard['inline_keyboard'][] = [
+            ['text' => $list['name'], 'callback_data' => "add_traveler_to_list_{$list['id']}"]
+        ];
+    }
+
+    // Send the message with the inline buttons
+    sendMessage($chat_id, "لطفاً لیستی که می‌خواهید مسافر به آن اضافه کنید را انتخاب کنید:", $inlineKeyboard);
 }
 
 function handleRemoveTravelerCommand($chat_id, $text)
@@ -1261,6 +1315,33 @@ function getMainMenuKeyboard()
         'resize_keyboard' => true,
         'one_time_keyboard' => false
     ];
+}
+
+function addTravelerToList($chat_id, $list_id, $traveler_id)
+{
+    $db = initDatabase();
+    // Check if the traveler is already in the list
+    $stmt = $db->prepare("SELECT * FROM traveler_list_members WHERE list_id = :list_id AND traveler_id = :traveler_id");
+    $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+    $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
+    $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if ($result) {
+        sendMessage($chat_id, "این مسافر قبلاً در لیست وجود دارد.");
+        return;
+    }
+
+    // Insert the traveler into the list
+    $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
+    $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+    $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
+    $stmt->execute();
+
+    if ($db->changes() > 0) {
+        sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.");
+    } else {
+        sendMessage($chat_id, "خطا در افزودن مسافر به لیست.");
+    }
 }
 
 ?>
