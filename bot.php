@@ -119,17 +119,18 @@ function initDatabase()
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     chat_id TEXT NOT NULL,
     name TEXT NOT NULL,
+    members TEXT DEFAULT '[]', -- JSON array of traveler IDs
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )");
 
-    // جدول ارتباطی بین لیست‌ها و مسافران
-    $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
-    list_id INTEGER,
-    traveler_id INTEGER,
-    FOREIGN KEY (list_id) REFERENCES traveler_lists(id) ON DELETE CASCADE,
-    FOREIGN KEY (traveler_id) REFERENCES travelers(id) ON DELETE CASCADE,
-    PRIMARY KEY (list_id, traveler_id)
-)");
+//     // جدول ارتباطی بین لیست‌ها و مسافران
+//     $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
+//     list_id INTEGER,
+//     traveler_id INTEGER,
+//     FOREIGN KEY (list_id) REFERENCES traveler_lists(id) ON DELETE CASCADE,
+//     FOREIGN KEY (traveler_id) REFERENCES travelers(id) ON DELETE CASCADE,
+//     PRIMARY KEY (list_id, traveler_id)
+// )");
 
     // Add user_states table
     $db->exec("CREATE TABLE IF NOT EXISTS user_states (
@@ -699,8 +700,8 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'add_selected_traveler_to_list_') === 0) {
         // Extract the list ID and traveler ID from the callback data
         $parts = explode('_', $data);
-        $list_id = $parts[4];
-        $traveler_id = $parts[5];
+        $list_id = $parts[5];
+        $traveler_id = $parts[6];
         // Call the function to add the traveler to the list
         addTravelerToList($chat_id, $list_id, $traveler_id);
         // Notify the user
@@ -1248,28 +1249,75 @@ function createTravelerList($chat_id, $name, $traveler_ids)
 function listTravelerLists($chat_id)
 {
     $db = initDatabase();
-    $stmt = $db->prepare("
-        SELECT 
-            tl.id,
-            tl.name,
-            GROUP_CONCAT(t.first_name || ' ' || t.last_name) as members,
-            COUNT(tlm.traveler_id) as member_count
-        FROM traveler_lists tl
-        LEFT JOIN traveler_list_members tlm ON tl.id = tlm.list_id
-        LEFT JOIN travelers t ON tlm.traveler_id = t.id
-        WHERE tl.chat_id = :chat_id
-        GROUP BY tl.id
-        ORDER BY tl.created_at DESC
-    ");
-
-    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-    $result = $stmt->execute();
-
-    $lists = [];
-    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-        $lists[] = $row;
+    
+    try {
+        // ابتدا لیست‌ها را می‌گیریم
+        $stmt = $db->prepare("
+            SELECT id, name, members
+            FROM traveler_lists
+            WHERE chat_id = :chat_id
+            ORDER BY created_at DESC
+        ");
+        
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        
+        $lists = [];
+        while ($list = $result->fetchArray(SQLITE3_ASSOC)) {
+            $members = json_decode($list['members'], true) ?: [];
+            $member_info = [];
+            
+            if (!empty($members)) {
+                // گرفتن اطلاعات مسافران
+                $placeholders = str_repeat('?,', count($members) - 1) . '?';
+                $query = "
+                    SELECT 
+                        id,
+                        first_name,
+                        last_name,
+                        passenger_type
+                    FROM travelers
+                    WHERE id IN ($placeholders)
+                    AND chat_id = ?
+                ";
+                
+                $stmt2 = $db->prepare($query);
+                $index = 1;
+                foreach ($members as $member_id) {
+                    $stmt2->bindValue($index++, $member_id, SQLITE3_INTEGER);
+                }
+                $stmt2->bindValue($index, $chat_id, SQLITE3_TEXT);
+                
+                $result2 = $stmt2->execute();
+                
+                while ($member = $result2->fetchArray(SQLITE3_ASSOC)) {
+                    $type_text = '';
+                    switch ($member['passenger_type']) {
+                        case 1:
+                            $type_text = 'بزرگسال';
+                            break;
+                        case 2:
+                            $type_text = 'کودک';
+                            break;
+                        case 3:
+                            $type_text = 'نوزاد';
+                            break;
+                    }
+                    $member_info[] = $member['first_name'] . ' ' . $member['last_name'] . ' (' . $type_text . ')';
+                }
+            }
+            
+            $list['member_count'] = count($members);
+            $list['members'] = empty($member_info) ? 'هیچ مسافری در این لیست وجود ندارد' : implode(' | ', $member_info);
+            
+            $lists[] = $list;
+        }
+        
+        return $lists;
+        
+    } catch (Exception $e) {
+        return [];
     }
-    return $lists;
 }
 
 // تابع کمکی برای تبدیل نوع مسافر به متن
@@ -1352,27 +1400,86 @@ function getMainMenuKeyboard()
 function addTravelerToList($chat_id, $list_id, $traveler_id)
 {
     $db = initDatabase();
-    // Check if the traveler is already in the list
-    $stmt = $db->prepare("SELECT * FROM traveler_list_members WHERE list_id = :list_id AND traveler_id = :traveler_id");
-    $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
-    $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
-    $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-    if ($result) {
-        sendMessage($chat_id, "این مسافر قبلاً در لیست وجود دارد.");
-        return;
-    }
-
-    // Insert the traveler into the list
-    $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
-    $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
-    $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
-    $stmt->execute();
-
-    if ($db->changes() > 0) {
-        sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.");
-    } else {
-        sendMessage($chat_id, "خطا در افزودن مسافر به لیست.");
+    
+    try {
+        // برای دیباگ، ابتدا مقادیر ورودی را چک می‌کنیم
+        error_log("Adding traveler $traveler_id to list $list_id for chat $chat_id");
+        
+        // اول چک می‌کنیم که لیست وجود داره و متعلق به این chat_id هست
+        $stmt = $db->prepare("
+            SELECT members 
+            FROM traveler_lists 
+            WHERE id = :list_id AND chat_id = :chat_id
+        ");
+        
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        
+        $result = $stmt->execute();
+        $list = $result->fetchArray(SQLITE3_ASSOC);
+        
+        if (!$list) {
+            error_log("List not found or not belonging to this chat_id");
+            return false;
+        }
+        
+        // چک می‌کنیم که مسافر وجود داره و متعلق به این chat_id هست
+        $stmt = $db->prepare("
+            SELECT id 
+            FROM travelers 
+            WHERE id = :traveler_id AND chat_id = :chat_id
+        ");
+        
+        $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        
+        $result = $stmt->execute();
+        $traveler = $result->fetchArray(SQLITE3_ASSOC);
+        
+        if (!$traveler) {
+            error_log("Traveler not found or not belonging to this chat_id");
+            return false;
+        }
+        
+        // آرایه اعضای فعلی را می‌گیریم
+        $current_members = json_decode($list['members'] ?: '[]', true);
+        error_log("Current members: " . print_r($current_members, true));
+        
+        // چک می‌کنیم که مسافر قبلاً در لیست نباشد
+        if (in_array($traveler_id, $current_members)) {
+            error_log("Traveler already in list");
+            return 'duplicate';
+        }
+        
+        // اضافه کردن مسافر جدید به آرایه
+        $current_members[] = (int)$traveler_id;
+        $new_members_json = json_encode($current_members);
+        error_log("New members array: " . $new_members_json);
+        
+        // آپدیت لیست
+        $stmt = $db->prepare("
+            UPDATE traveler_lists 
+            SET members = :members 
+            WHERE id = :list_id AND chat_id = :chat_id
+        ");
+        
+        $stmt->bindValue(':members', $new_members_json, SQLITE3_TEXT);
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        
+        $result = $stmt->execute();
+        
+        if ($db->changes() > 0) {
+            error_log("Successfully added traveler to list");
+            return true;
+        } else {
+            error_log("No changes made to database");
+            return false;
+        }
+        
+    } catch (Exception $e) {
+        error_log("Error in addTravelerToList: " . $e->getMessage());
+        return false;
     }
 }
 
