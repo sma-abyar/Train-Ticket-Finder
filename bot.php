@@ -123,7 +123,7 @@ function initDatabase()
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )");
 
-//     // جدول ارتباطی بین لیست‌ها و مسافران
+    //     // جدول ارتباطی بین لیست‌ها و مسافران
 //     $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
 //     list_id INTEGER,
 //     traveler_id INTEGER,
@@ -714,6 +714,15 @@ function handleCallbackQuery($callback_query)
         // Handle coupe preference selection
         $coupe = str_replace('coupe_', '', $data);
         handleSetTripCoupe($chat_id, $coupe);
+    } elseif (strpos($data, 'traveler_gender_') === 0) {
+        $traveller_gender = str_replace('traveler_gender_', '', $data);
+        handleSetTravelerGender($chat_id, $traveller_gender);
+    } elseif (strpos($data, 'traveler_type_') === 0) {
+        $traveler_type = str_replace('traveler_type_', '', $data);
+        handleSetTravelerPassengerType($chat_id, $traveler_type);
+    } elseif (strpos($data, 'wheelchair_') === 0) {
+        $wheelchair = str_replace('wheelchair_', '', $data);
+        handleSetTravelerWheelchair($chat_id, $wheelchair);
     }
 }
 
@@ -936,7 +945,17 @@ function handleSetTravelerNationalCode($chat_id, $text)
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['national_code'] = $national_code;
     setUserState($chat_id, 'SET_TRAVELER_PASSENGER_TYPE', $temp_data);
-    sendMessage($chat_id, "لطفاً نوع مسافر را وارد کنید (1: بزرگسال، 2: کودک، 3: نوزاد):");
+    // Send inline keyboard for passenger type
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'بزرگسال', 'callback_data' => 'traveler_type_0'],
+                ['text' => 'کودک', 'callback_data' => 'traveler_type_1'],
+                ['text' => 'نوزاد', 'callback_data' => 'traveler_type_2']
+            ]
+        ]
+    ];
+    sendMessage($chat_id, "لطفاً بازه‌ی سنی مسافر را انتخاب کنید:", $inlineKeyboard);
 }
 
 function handleSetTravelerPassengerType($chat_id, $text)
@@ -949,7 +968,16 @@ function handleSetTravelerPassengerType($chat_id, $text)
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['passenger_type'] = $passenger_type;
     setUserState($chat_id, 'SET_TRAVELER_GENDER', $temp_data);
-    sendMessage($chat_id, "لطفاً جنسیت مسافر را وارد کنید (1: آقا، 2: خانم):");
+    // Send inline keyboard for gender
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'آقا', 'callback_data' => 'traveler_gender_1'],
+                ['text' => 'خانم', 'callback_data' => 'traveler_gender_2']
+            ]
+        ]
+    ];
+    sendMessage($chat_id, "لطفاً جنسیت مسافر را انتخاب کنید:", $inlineKeyboard);
 }
 
 function handleSetTravelerGender($chat_id, $text)
@@ -961,8 +989,20 @@ function handleSetTravelerGender($chat_id, $text)
     $gender = (int) $text;
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['gender'] = $gender;
-    setUserState($chat_id, 'SET_TRAVELER_SERVICES', $temp_data);
-    sendMessage($chat_id, "لطفاً خدمات مورد نیاز را وارد کنید (مثال: [] یا [\"service1\",\"service2\"]):");
+    // setUserState($chat_id, 'SET_TRAVELER_SERVICES', $temp_data);
+    // sendMessage($chat_id, "لطفاً خدمات مورد نیاز را وارد کنید (مثال: [] یا [\"service1\",\"service2\"]):");
+    setUserState($chat_id, 'SET_TRAVELER_WHEELCHAIR', $temp_data);
+    // Send inline keyboard for wheelchair preference
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'خیر', 'callback_data' => 'wheelchair_0'],
+                ['text' => 'بله', 'callback_data' => 'wheelchair_1']
+            ]
+        ]
+    ];
+
+    sendMessage($chat_id, "لطفاً نیاز به ویلچر را انتخاب کنید:", $inlineKeyboard);
 }
 
 function handleSetTravelerServices($chat_id, $text)
@@ -970,8 +1010,6 @@ function handleSetTravelerServices($chat_id, $text)
     $services = json_decode($text, true) ?? [];
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['services'] = $services;
-    setUserState($chat_id, 'SET_TRAVELER_WHEELCHAIR', $temp_data);
-    sendMessage($chat_id, "لطفاً نیاز به ویلچر را وارد کنید (0: خیر، 1: بله):");
 }
 
 function handleSetTravelerWheelchair($chat_id, $text)
@@ -1249,7 +1287,7 @@ function createTravelerList($chat_id, $name)
 function listTravelerLists($chat_id)
 {
     $db = initDatabase();
-    
+
     try {
         // ابتدا لیست‌ها را می‌گیریم
         $stmt = $db->prepare("
@@ -1258,15 +1296,15 @@ function listTravelerLists($chat_id)
             WHERE chat_id = :chat_id
             ORDER BY created_at DESC
         ");
-        
+
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
         $result = $stmt->execute();
-        
+
         $lists = [];
         while ($list = $result->fetchArray(SQLITE3_ASSOC)) {
             $members = json_decode($list['members'], true) ?: [];
             $member_info = [];
-            
+
             if (!empty($members)) {
                 // گرفتن اطلاعات مسافران
                 $placeholders = str_repeat('?,', count($members) - 1) . '?';
@@ -1280,16 +1318,16 @@ function listTravelerLists($chat_id)
                     WHERE id IN ($placeholders)
                     AND chat_id = ?
                 ";
-                
+
                 $stmt2 = $db->prepare($query);
                 $index = 1;
                 foreach ($members as $member_id) {
                     $stmt2->bindValue($index++, $member_id, SQLITE3_INTEGER);
                 }
                 $stmt2->bindValue($index, $chat_id, SQLITE3_TEXT);
-                
+
                 $result2 = $stmt2->execute();
-                
+
                 while ($member = $result2->fetchArray(SQLITE3_ASSOC)) {
                     $type_text = '';
                     switch ($member['passenger_type']) {
@@ -1306,15 +1344,15 @@ function listTravelerLists($chat_id)
                     $member_info[] = $member['first_name'] . ' ' . $member['last_name'] . ' (' . $type_text . ')';
                 }
             }
-            
+
             $list['member_count'] = count($members);
             $list['members'] = empty($member_info) ? 'هیچ مسافری در این لیست وجود ندارد' : implode(' | ', $member_info);
-            
+
             $lists[] = $list;
         }
-        
+
         return $lists;
-        
+
     } catch (Exception $e) {
         return [];
     }
@@ -1400,75 +1438,75 @@ function getMainMenuKeyboard()
 function addTravelerToList($chat_id, $list_id, $traveler_id)
 {
     $db = initDatabase();
-    
+
     try {
         // برای دیباگ، ابتدا مقادیر ورودی را چک می‌کنیم
         error_log("Adding traveler $traveler_id to list $list_id for chat $chat_id");
-        
+
         // اول چک می‌کنیم که لیست وجود داره و متعلق به این chat_id هست
         $stmt = $db->prepare("
             SELECT members 
             FROM traveler_lists 
             WHERE id = :list_id AND chat_id = :chat_id
         ");
-        
+
         $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-        
+
         $result = $stmt->execute();
         $list = $result->fetchArray(SQLITE3_ASSOC);
-        
+
         if (!$list) {
             error_log("List not found or not belonging to this chat_id");
             return false;
         }
-        
+
         // چک می‌کنیم که مسافر وجود داره و متعلق به این chat_id هست
         $stmt = $db->prepare("
             SELECT id 
             FROM travelers 
             WHERE id = :traveler_id AND chat_id = :chat_id
         ");
-        
+
         $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-        
+
         $result = $stmt->execute();
         $traveler = $result->fetchArray(SQLITE3_ASSOC);
-        
+
         if (!$traveler) {
             error_log("Traveler not found or not belonging to this chat_id");
             return false;
         }
-        
+
         // آرایه اعضای فعلی را می‌گیریم
         $current_members = json_decode($list['members'] ?: '[]', true);
         error_log("Current members: " . print_r($current_members, true));
-        
+
         // چک می‌کنیم که مسافر قبلاً در لیست نباشد
         if (in_array($traveler_id, $current_members)) {
             error_log("Traveler already in list");
             return 'duplicate';
         }
-        
+
         // اضافه کردن مسافر جدید به آرایه
-        $current_members[] = (int)$traveler_id;
+        $current_members[] = (int) $traveler_id;
         $new_members_json = json_encode($current_members);
         error_log("New members array: " . $new_members_json);
-        
+
         // آپدیت لیست
         $stmt = $db->prepare("
             UPDATE traveler_lists 
             SET members = :members 
             WHERE id = :list_id AND chat_id = :chat_id
         ");
-        
+
         $stmt->bindValue(':members', $new_members_json, SQLITE3_TEXT);
         $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-        
+
         $result = $stmt->execute();
-        
+
         if ($db->changes() > 0) {
             error_log("Successfully added traveler to list");
             return true;
@@ -1476,7 +1514,7 @@ function addTravelerToList($chat_id, $list_id, $traveler_id)
             error_log("No changes made to database");
             return false;
         }
-        
+
     } catch (Exception $e) {
         error_log("Error in addTravelerToList: " . $e->getMessage());
         return false;
