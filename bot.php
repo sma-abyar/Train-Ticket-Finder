@@ -469,7 +469,7 @@ if (isset($update['callback_query'])) {
         case 'افزودن لیست مسافران':
             setUserState($chat_id, 'ADD_TRAVELER_LIST');
             break;
-        case 'نمایش لیست‌ها':
+        case 'لیست‌های مسافران':
             setUserState($chat_id, 'SHOW_TRAVELER_LISTS');
             break;
         case 'حذف مسافر':
@@ -649,6 +649,32 @@ function handleCallbackQuery($callback_query)
         approveUser($user_chat_id);
         // Notify the admin
         sendMessage($chat_id, "کاربر با شناسه $user_chat_id تأیید شد.");
+    } elseif ($data === 'add_trip') {
+        // Start the trip addition process
+        handleSetTripCommand($chat_id);
+    } elseif ($data === 'remove_trip') {
+        // Fetch the list of trips
+        $trips = getUserTrips($chat_id);
+        if (empty($trips)) {
+            sendMessage($chat_id, "شما هیچ سفری برای حذف ندارید.");
+            return;
+        }
+        // Create inline buttons for each trip
+        $inlineKeyboard = ['inline_keyboard' => []];
+        foreach ($trips as $trip) {
+            $inlineKeyboard['inline_keyboard'][] = [
+                ['text' => "سفر به {$trip['route']} ({$trip['date']})", 'callback_data' => "remove_trip_{$trip['id']}"]
+            ];
+        }
+        // Send the message with the inline buttons
+        sendMessage($chat_id, "لطفاً سفری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
+    } elseif (strpos($data, 'remove_trip_') === 0) {
+        // Extract the trip ID from the callback data
+        $trip_id = str_replace('remove_trip_', '', $data);
+        // Call the function to remove the trip
+        removeUserTrip($chat_id, $trip_id);
+        // Notify the user
+        sendMessage($chat_id, "سفر با موفقیت حذف شد.");
     }
 }
 
@@ -707,7 +733,37 @@ function handleSetTripCommand($chat_id)
 
 function handleShowTripsCommand($chat_id)
 {
-    showUserTrips($chat_id);
+    $trips = getUserTrips($chat_id);
+
+    // Initialize the inline keyboard with the "افزودن سفر" button
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'افزودن سفر', 'callback_data' => 'add_trip']
+            ]
+        ]
+    ];
+
+    if (empty($trips)) {
+        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.", $inlineKeyboard);
+        return;
+    }
+
+    $message = "لیست سفرهای شما:\n";
+    foreach ($trips as $trip) {
+        $message .= "ID: {$trip['id']}\n"
+            . "مسیر: {$trip['route']}\n"
+            . "تاریخ رفت: {$trip['date']}\n"
+            . "نوع: {$trip['type']}\n"
+            . "-----------------------\n";
+    }
+
+    // Add the "حذف سفر" button if $trips is not empty
+    $inlineKeyboard['inline_keyboard'][] = [
+        ['text' => 'حذف سفر', 'callback_data' => 'remove_trip']
+    ];
+
+    sendMessage($chat_id, $message, $inlineKeyboard);
 }
 
 function handleSetTripRoute($chat_id, $text)
@@ -1195,9 +1251,11 @@ function getMainMenuKeyboard()
     return [
         'keyboard' => [
             [['text' => 'تنظیم سفر'], ['text' => 'نمایش سفرها']],
-            [['text' => 'نمایش مسافران']],
-            [['text' => 'نمایش لیست‌ها']],
-            [['text' => 'حذف سفر']],
+            [
+                ['text' => 'نمایش مسافران'],
+                ['text' => 'لیست‌های مسافران']
+            ],
+            // [['text' => 'حذف سفر']],
             [['text' => 'راهنما']]
         ],
         'resize_keyboard' => true,
