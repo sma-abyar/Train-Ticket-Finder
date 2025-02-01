@@ -477,7 +477,7 @@ if (isset($update['callback_query'])) {
             sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: 1):");
             break;
         case 'حذف لیست':
-            setUserState($chat_id, 'REMOVE_TRAVELER_LIST');
+            setUserState($chat_id, 'REMOVE_LIST_OF_TRAVELER');
             sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: 1):");
             break;
         case 'حذف سفر':
@@ -523,7 +523,7 @@ if (isset($update['callback_query'])) {
                 handleRemoveTravelerCommand($chat_id, $text);
                 clearUserState($chat_id);
                 break;
-            case 'REMOVE_TRAVELER_LIST':
+            case 'REMOVE_LIST_OF_TRAVELER':
                 handleRemoveTravelerListCommand($chat_id, $text);
                 clearUserState($chat_id);
                 break;
@@ -619,7 +619,7 @@ function handleCallbackQuery($callback_query)
     } elseif ($data === 'add_traveler_list') {
         // Start the traveler list addition process
         handleAddTravelerListCommand($chat_id);
-    } elseif ($data === 'remove_traveler_list') {
+    } elseif ($data === 'remove_list_of_traveler') {
         // Fetch the list of traveler lists
         $lists = listTravelerLists($chat_id);
         if (empty($lists)) {
@@ -630,14 +630,14 @@ function handleCallbackQuery($callback_query)
         $inlineKeyboard = ['inline_keyboard' => []];
         foreach ($lists as $list) {
             $inlineKeyboard['inline_keyboard'][] = [
-                ['text' => $list['name'], 'callback_data' => "remove_selected_traveler_list_{$list['id']}"]
+                ['text' => $list['name'], 'callback_data' => "remove_selected_list_of_traveler_{$list['id']}"]
             ];
         }
         // Send the message with the inline buttons
         sendMessage($chat_id, "لطفاً لیست مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
-    } elseif (strpos($data, 'remove_selected_traveler_list_') === 0) {
+    } elseif (strpos($data, 'remove_selected_list_of_traveler_') === 0) {
         // Extract the traveler list ID from the callback data
-        $list_id = str_replace('remove_selected_traveler_list_', '', $data);
+        $list_id = str_replace('remove_selected_list_of_traveler_', '', $data);
         // Call the function to remove the traveler list
         removeTravelerList($chat_id, $list_id);
         // Notify the user
@@ -674,8 +674,8 @@ function handleCallbackQuery($callback_query)
         // Call the function to remove the trip
         removeUserTrip($chat_id, $trip_id);
         // Notify the user
-        sendMessage($chat_id, "سفر با موفقیت حذف شد.");
-    }  elseif ($data === 'add_traveler_to_list') {
+        // sendMessage($chat_id, "سفر با موفقیت حذف شد.");
+    } elseif ($data === 'add_traveler_to_list') {
         // Start the process to add travelers to a list
         handleAddTravelerToListCommand($chat_id);
     } elseif (strpos($data, 'add_traveler_to_list_') === 0) {
@@ -705,6 +705,14 @@ function handleCallbackQuery($callback_query)
         addTravelerToList($chat_id, $list_id, $traveler_id);
         // Notify the user
         sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.");
+    } elseif (strpos($data, 'trip_type_') === 0) {
+        // Handle trip type selection
+        $type = str_replace('trip_type_', '', $data);
+        handleSetTripType($chat_id, $type);
+    } elseif (strpos($data, 'coupe_') === 0) {
+        // Handle coupe preference selection
+        $coupe = str_replace('coupe_', '', $data);
+        handleSetTripCoupe($chat_id, $coupe);
     }
 }
 
@@ -831,33 +839,57 @@ function handleSetTripCount($chat_id, $text)
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['count'] = $count;
     setUserState($chat_id, 'SET_TRIP_TYPE', $temp_data);
-    sendMessage($chat_id, "لطفاً نوع بلیط را وارد کنید (0: معمولی, 1: ویژه):");
+    // sendMessage($chat_id, "لطفاً نوع بلیط را وارد کنید (0: معمولی, 1: ویژه):");
+    // Send inline keyboard for trip type selection
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'معمولی', 'callback_data' => 'trip_type_0'],
+                ['text' => 'ویژه‌ی برادران', 'callback_data' => 'trip_type_1'],
+                ['text' => 'ویژه‌ی خواهران', 'callback_data' => 'trip_type_2']
+            ]
+        ]
+    ];
+
+    sendMessage($chat_id, "لطفاً نوع بلیط را انتخاب کنید:", $inlineKeyboard);
 }
 
 function handleSetTripType($chat_id, $text)
 {
-    if (!is_numeric($text)) {
-        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+    // If the text is numeric, it means the user clicked on an inline button
+    if (is_numeric($text)) {
+        $type = (int) $text;
+        $temp_data = getUserState($chat_id)['temp_data'];
+        $temp_data['type'] = $type;
+        setUserState($chat_id, 'SET_TRIP_COUPE', $temp_data);
+        handleSetTripCoupe($chat_id, ''); // Move to the next step
+        // Send inline keyboard for coupe preference
+        $inlineKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'بله', 'callback_data' => 'coupe_1'],
+                    ['text' => 'خیر', 'callback_data' => 'coupe_0']
+                ]
+            ]
+        ];
+
+        sendMessage($chat_id, "آیا ترجیح می‌دهید کوپه باشد؟", $inlineKeyboard);
         return;
     }
-    $type = (int) $text;
-    $temp_data = getUserState($chat_id)['temp_data'];
-    $temp_data['type'] = $type;
-    setUserState($chat_id, 'SET_TRIP_COUPE', $temp_data);
-    sendMessage($chat_id, "لطفاً ترجیح کوپه را وارد کنید (0: خیر, 1: بله):");
 }
 
 function handleSetTripCoupe($chat_id, $text)
 {
-    if (!is_numeric($text)) {
-        sendMessage($chat_id, "لطفاً یک عدد معتبر وارد کنید (مثال: 0):");
+    // If the text is numeric, it means the user clicked on an inline button
+    if (is_numeric($text)) {
+        $coupe = (int) $text;
+        $temp_data = getUserState($chat_id)['temp_data'];
+        $temp_data['coupe'] = $coupe;
+        setUserState($chat_id, 'SET_TRIP_FILTER', $temp_data);
+        handleSetTripFilter($chat_id, '0'); // Move to the next step
         return;
     }
-    $coupe = (int) $text;
-    $temp_data = getUserState($chat_id)['temp_data'];
-    $temp_data['coupe'] = $coupe;
-    setUserState($chat_id, 'SET_TRIP_FILTER', $temp_data);
-    sendMessage($chat_id, "لطفاً فیلتر را وارد کنید (0: بدون فیلتر, 1: با فیلتر):");
+
 }
 
 function handleSetTripFilter($chat_id, $text)
@@ -1054,7 +1086,7 @@ function handleShowTravelerListsCommand($chat_id)
 
     // Add the "حذف لیست مسافر" and "افزودن مسافر به لیست" buttons if $lists is not empty
     $inlineKeyboard['inline_keyboard'][] = [
-        ['text' => 'حذف لیست مسافر', 'callback_data' => 'remove_traveler_list']
+        ['text' => 'حذف لیست مسافر', 'callback_data' => 'remove_list_of_traveler']
     ];
     $inlineKeyboard['inline_keyboard'][] = [
         ['text' => 'افزودن مسافر به لیست', 'callback_data' => 'add_traveler_to_list']
