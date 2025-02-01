@@ -1007,21 +1007,21 @@ function handleAddTravelerListCommand($chat_id)
 function handleSetTravelerListName($chat_id, $text)
 {
     $list_name = $text;
-    setUserState($chat_id, 'SET_TRAVELER_LIST_MEMBERS', ['name' => $list_name]);
-    sendMessage($chat_id, "لطفاً شماره‌های مسافران را وارد کنید (مثال: 1,2,3,4):");
+    // setUserState($chat_id, 'SET_TRAVELER_LIST_MEMBERS', ['name' => $list_name]);
+    try {
+        createTravelerList($chat_id, $list_name);
+        sendMessage($chat_id, "لیست مسافران *{$list_name}* با موفقیت ایجاد شد.");
+        clearUserState($chat_id);
+    } catch (Exception $e) {
+        sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.", null);
+    }
+    // sendMessage($chat_id, "لطفاً شماره‌های مسافران را وارد کنید (مثال: 1,2,3,4):");
 }
 
 function handleSetTravelerListMembers($chat_id, $text)
 {
     $traveler_ids = array_map('intval', explode(',', $text));
     $temp_data = getUserState($chat_id)['temp_data'];
-    try {
-        createTravelerList($chat_id, $temp_data['name'], $traveler_ids);
-        sendMessage($chat_id, "لیست مسافران *{$temp_data['name']}* با موفقیت ایجاد شد.");
-    } catch (Exception $e) {
-        sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.");
-    }
-    clearUserState($chat_id);
 }
 
 function handleShowTravelersCommand($chat_id)
@@ -1215,7 +1215,7 @@ function listTravelers($chat_id)
 }
 
 // تابع ایجاد لیست جدید مسافران
-function createTravelerList($chat_id, $name, $traveler_ids)
+function createTravelerList($chat_id, $name)
 {
     $db = initDatabase();
     $db->exec('BEGIN TRANSACTION');
@@ -1227,15 +1227,15 @@ function createTravelerList($chat_id, $name, $traveler_ids)
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
         $stmt->execute();
 
-        $list_id = $db->lastInsertRowID();
+        // $list_id = $db->lastInsertRowID();
 
-        // اضافه کردن مسافران به لیست
-        $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
-        foreach ($traveler_ids as $traveler_id) {
-            $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
-            $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
-            $stmt->execute();
-        }
+        // // اضافه کردن مسافران به لیست
+        // $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
+        // foreach ($traveler_ids as $traveler_id) {
+        //     $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        //     $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
+        //     $stmt->execute();
+        // }
 
         $db->exec('COMMIT');
         return true;
