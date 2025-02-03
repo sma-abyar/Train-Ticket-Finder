@@ -1696,28 +1696,28 @@ function getFoodOptions($ticketId, $passengerCount)
         return [];
     }
     
-    // لاگ کردن پاسخ دریافتی
-    file_put_contents('debug.log', "Response length: " . strlen($response) . "\n", FILE_APPEND);
+    // لاگ کردن پاسخ برای بررسی
+    file_put_contents('debug.log', "Response sample: " . substr($response, 0, 500) . "\n", FILE_APPEND);
     
     // استخراج گزینه‌های غذا
-    preg_match_all('/<option[^>]*value="([^"]*)"[^>]*>([^<]+)<\/option>/', $response, $matches);
-    file_put_contents('debug.log', "Matches: " . json_encode($matches) . "\n", FILE_APPEND);
+    preg_match_all('/<option[^>]*value="(\d+)"[^>]*>\s*([^<]+?)\s*<\/option>/u', $response, $matches);
+    
+    file_put_contents('debug.log', "Matches found: " . json_encode($matches, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
     
     $foodOptions = [];
-    if (isset($matches[1]) && isset($matches[2])) {
+    if (!empty($matches[1]) && !empty($matches[2])) {
         for ($i = 0; $i < count($matches[1]); $i++) {
-            if (!empty($matches[1][$i]) && !empty($matches[2][$i])) {
-                $foodOptions[] = [
-                    'id' => $matches[1][$i],
-                    'title' => trim($matches[2][$i])
-                ];
-            }
+            $foodOptions[] = [
+                'id' => trim($matches[1][$i]),
+                'title' => trim(preg_replace('/\s+/', ' ', $matches[2][$i])) // حذف فاصله‌های اضافی
+            ];
         }
     }
     
-    file_put_contents('debug.log', "Food options found: " . json_encode($foodOptions) . "\n", FILE_APPEND);
+    file_put_contents('debug.log', "Final food options: " . json_encode($foodOptions, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
     return $foodOptions;
 }
+
 
 function makeReservation($ticketId, $passengers, $user)
 {
