@@ -288,7 +288,6 @@ function processUserTrips($chat_id)
 function fetchTickets($userTrip)
 {
     global $url;
-
     $postFields = [
         'route' => $userTrip['route'],
         'car_transport' => 0,
@@ -299,7 +298,6 @@ function fetchTickets($userTrip)
         'coupe' => $userTrip['coupe'],
         'filter' => $userTrip['filter'],
     ];
-
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -311,12 +309,9 @@ function fetchTickets($userTrip)
         "X-Requested-With: XMLHttpRequest",
         "User-Agent: Mozilla/5.0"
     ]);
-
     $response = curl_exec($ch);
     curl_close($ch);
-
     $data = json_decode($response, true);
-
     $route_title = '';
     if (isset($data['data']['status']) && $data['data']['status'] === 'success') {
         $departure = $data['data']['data']['departure'];
@@ -335,14 +330,15 @@ function fetchTickets($userTrip)
                         . "⏰ *زمان حرکت*: {$ticket['time']}\n"
                         . "📊 *ظرفیت باقی‌مانده*: {$ticket['counting']}\n"
                         . "💰 *قیمت*: {$ticket['cost_title']} ریال\n";
-                    $replyMarkup = [
-                        'inline_keyboard' => [
-                            [
-                                ['text' => 'تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/reservation/' . $ticket['id'] . '/0/' . $userTrip['count'] . '-0-0/' . $userTrip['coupe']]
-                            ]
-                        ]
-                    ];
-                    sendMessage($userTrip['chat_id'], $message, $replyMarkup);
+
+                    // گرفتن لیست‌های مسافران برای این کاربر
+                    $travelerLists = listTravelerLists($userTrip['chat_id']);
+
+                    // ایجاد پیام و دکمه‌های جدید
+                    $messageData = modifyTicketMessage($message, $userTrip, $ticket, $travelerLists);
+
+                    // ارسال پیام با دکمه‌های جدید
+                    sendMessage($userTrip['chat_id'], $messageData['message'], $messageData['reply_markup']);
                 }
             }
             if (!$found && ($userTrip['no_counting_notif'] == 0)) {
@@ -354,15 +350,13 @@ function fetchTickets($userTrip)
             updateNotificationStatus($userTrip['id'], 'no_ticket_notif');
         }
     } elseif ($userTrip['bad_data_notif'] == 0) {
-        // sendMessage($userTrip['chat_id'], "⚠️ احتمالا راه آهن قطع شده\nدرست بشه به کارمون ادامه می‌دیم");
         updateNotificationStatus($userTrip['id'], 'bad_data_notif');
     } else {
         sendMessage($userTrip['chat_id'], "خیلی اوضاع خیطه 😬 \nبه ادمین یه ندا بده ❤");
     }
-
 }
 
-// update notif state of each trip
+// update notif state of each tripz
 function updateNotificationStatus($userTripId, $field)
 {
     $db = initDatabase();
@@ -590,6 +584,7 @@ function handleCallbackQuery($callback_query)
 {
     $chat_id = $callback_query['message']['chat']['id'];
     $data = $callback_query['data'];
+    $message_id = $callback_query['message']['message_id'];
 
     if ($data === 'add_traveler') {
         // Start the traveler addition process
@@ -723,6 +718,17 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'wheelchair_') === 0) {
         $wheelchair = str_replace('wheelchair_', '', $data);
         handleSetTravelerWheelchair($chat_id, $wheelchair);
+    }elseif (strpos($data, 'reserve_list_') === 0) {
+        // مدیریت رزرو برای لیست
+        $message = handleListReservation($data, $chat_id);
+        answerCallbackQuery($callback_query['id'], "در حال پردازش درخواست...");
+        editMessageText($chat_id, $message_id, $message);
+    } elseif (strpos($data, 'food_') === 0) {
+        // مدیریت انتخاب غذا
+        handleFoodSelection($callback_query, $chat_id);
+    } else {
+        // اگر callback ناشناخته بود
+        answerCallbackQuery($callback_query['id'], "درخواست نامعتبر!");
     }
 }
 
@@ -1356,6 +1362,496 @@ function listTravelerLists($chat_id)
     } catch (Exception $e) {
         return [];
     }
+}
+
+// اول جدول موقت برای ذخیره انتخاب غذاها رو می‌سازیم
+function createTemporaryFoodTable()
+{
+    $db = initDatabase();
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS temporary_food_selections (
+            chat_id TEXT,
+            list_id INTEGER,
+            passenger_index INTEGER,
+            food_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (chat_id, list_id, passenger_index)
+        )
+    ");
+}
+
+// ذخیره موقت انتخاب غذا
+function saveTemporaryFoodSelection($chat_id, $list_id, $passenger_index, $food_id)
+{
+    $db = initDatabase();
+    try {
+        createTemporaryFoodTable();
+
+        $stmt = $db->prepare("
+            INSERT OR REPLACE INTO temporary_food_selections 
+                (chat_id, list_id, passenger_index, food_id)
+            VALUES 
+                (:chat_id, :list_id, :passenger_index, :food_id)
+        ");
+
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':passenger_index', $passenger_index, SQLITE3_INTEGER);
+        $stmt->bindValue(':food_id', $food_id, SQLITE3_TEXT);
+
+        return $stmt->execute();
+    } catch (Exception $e) {
+        // در صورت خطا لاگ کنیم
+        error_log("Error in saveTemporaryFoodSelection: " . $e->getMessage());
+        return false;
+    }
+}
+
+// بررسی اینکه آیا همه مسافران غذایشان را انتخاب کرده‌اند
+function isAllFoodSelected($chat_id, $list_id)
+{
+    $db = initDatabase();
+    try {
+        // اول تعداد مسافران لیست را می‌گیریم
+        $stmt = $db->prepare("
+            SELECT members
+            FROM traveler_lists
+            WHERE id = :list_id AND chat_id = :chat_id
+        ");
+
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+
+        $result = $stmt->execute();
+        $list = $result->fetchArray(SQLITE3_ASSOC);
+
+        if (!$list) {
+            return false;
+        }
+
+        $members = json_decode($list['members'], true) ?: [];
+        $total_members = count($members);
+
+        // حالا تعداد انتخاب‌های غذا را می‌شماریم
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as selected_count
+            FROM temporary_food_selections
+            WHERE chat_id = :chat_id AND list_id = :list_id
+        ");
+
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+
+        $result = $stmt->execute();
+        $count = $result->fetchArray(SQLITE3_ASSOC);
+
+        // اگر تعداد انتخاب‌ها برابر تعداد مسافران باشد، یعنی همه انتخاب کرده‌اند
+        return $count['selected_count'] === $total_members;
+
+    } catch (Exception $e) {
+        error_log("Error in isAllFoodSelected: " . $e->getMessage());
+        return false;
+    }
+}
+
+// گرفتن لیست مسافران با غذاهای انتخاب شده
+function getTravelersWithFood($chat_id, $list_id)
+{
+    $db = initDatabase();
+    try {
+        // اول اطلاعات مسافران را می‌گیریم
+        $travelers = getTravelersFromList($list_id, $chat_id);
+
+        if (empty($travelers)) {
+            return [];
+        }
+
+        // حالا غذاهای انتخاب شده را می‌گیریم
+        $stmt = $db->prepare("
+            SELECT passenger_index, food_id
+            FROM temporary_food_selections
+            WHERE chat_id = :chat_id AND list_id = :list_id
+        ");
+
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+
+        $result = $stmt->execute();
+
+        $food_selections = [];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            $food_selections[$row['passenger_index']] = $row['food_id'];
+        }
+
+        // ترکیب اطلاعات مسافران با غذاهای انتخاب شده
+        foreach ($travelers as $index => &$traveler) {
+            $traveler['food_id'] = $food_selections[$index] ?? null;
+
+            // اگر غذایی انتخاب نشده باشد، غذای پیش‌فرض (بدون غذا) را انتخاب می‌کنیم
+            if (!$traveler['food_id']) {
+                $traveler['food_id'] = "642444"; // کد غذای "بدون غذا"
+            }
+        }
+
+        return $travelers;
+
+    } catch (Exception $e) {
+        error_log("Error in getTravelersWithFood: " . $e->getMessage());
+        return [];
+    }
+}
+
+// پاک کردن اطلاعات موقت
+function clearTemporaryFoodSelections($chat_id, $list_id)
+{
+    $db = initDatabase();
+    try {
+        $stmt = $db->prepare("
+            DELETE FROM temporary_food_selections
+            WHERE chat_id = :chat_id AND list_id = :list_id
+        ");
+
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+
+        return $stmt->execute();
+
+    } catch (Exception $e) {
+        error_log("Error in clearTemporaryFoodSelections: " . $e->getMessage());
+        return false;
+    }
+}
+
+// پاک کردن انتخاب‌های قدیمی (می‌تونه به صورت کرون جاب اجرا بشه)
+function cleanupOldFoodSelections($hours = 24)
+{
+    $db = initDatabase();
+    try {
+        $stmt = $db->prepare("
+            DELETE FROM temporary_food_selections
+            WHERE created_at < datetime('now', :hours || ' hours')
+        ");
+
+        $stmt->bindValue(':hours', "-$hours", SQLITE3_TEXT);
+
+        return $stmt->execute();
+
+    } catch (Exception $e) {
+        error_log("Error in cleanupOldFoodSelections: " . $e->getMessage());
+        return false;
+    }
+}
+
+// یک تابع کمکی برای گرفتن قیمت غذا از ID آن
+function getFoodPrice($food_id, $ticket_id, $passenger_count)
+{
+    $foodOptions = getFoodOptions($ticket_id, $passenger_count);
+
+    foreach ($foodOptions as $option) {
+        if ($option['id'] === $food_id) {
+            // استخراج قیمت از عنوان غذا (مثال: "چلوکباب ----قیمت: ٢,٠٨٠,٠٠٠ ریال")
+            if (preg_match('/قیمت:\s*([\d,]+)\s*ریال/', $option['title'], $matches)) {
+                return (int) str_replace(',', '', $matches[1]);
+            }
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
+
+function getTravelersFromList($list_id, $chat_id)
+{
+    $db = initDatabase();
+    try {
+        // ابتدا اطلاعات لیست را می‌گیریم
+        $stmt = $db->prepare("
+            SELECT members
+            FROM traveler_lists
+            WHERE id = :list_id AND chat_id = :chat_id
+        ");
+        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $list = $result->fetchArray(SQLITE3_ASSOC);
+
+        if (!$list) {
+            return [];
+        }
+
+        $members = json_decode($list['members'], true) ?: [];
+        if (empty($members)) {
+            return [];
+        }
+
+        // حالا اطلاعات مسافران را می‌گیریم
+        $placeholders = str_repeat('?,', count($members) - 1) . '?';
+        $query = "
+            SELECT
+                id,
+                first_name,
+                last_name,
+                national_code,
+                gender,
+                passenger_type
+            FROM travelers
+            WHERE id IN ($placeholders)
+            AND chat_id = ?
+        ";
+
+        $stmt = $db->prepare($query);
+        $index = 1;
+        foreach ($members as $member_id) {
+            $stmt->bindValue($index++, $member_id, SQLITE3_INTEGER);
+        }
+        $stmt->bindValue($index, $chat_id, SQLITE3_TEXT);
+
+        $result = $stmt->execute();
+
+        $travelers = [];
+        while ($traveler = $result->fetchArray(SQLITE3_ASSOC)) {
+            $travelers[] = $traveler;
+        }
+
+        return $travelers;
+    } catch (Exception $e) {
+        return [];
+    }
+}
+function handleFoodSelection($callback_data, $chat_id)
+{
+    // استخراج اطلاعات از callback_data
+    list(, $ticket_id, $list_id, $passenger_index, $food_id) = explode('_', $callback_data);
+
+    // ذخیره انتخاب غذا در session یا دیتابیس موقت
+    saveTemporaryFoodSelection($chat_id, $list_id, $passenger_index, $food_id);
+
+    // بررسی اینکه آیا همه مسافران غذای خود را انتخاب کرده‌اند
+    if (isAllFoodSelected($chat_id, $list_id)) {
+        // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
+        $user = [
+            'fullName' => 'نام کاربر',
+            'email' => '',
+            'mobileNumber' => '09XXXXXXXXX'
+        ];
+
+        // دریافت اطلاعات مسافران با غذاهای انتخاب شده
+        $travelers = getTravelersWithFood($chat_id, $list_id);
+
+        // انجام رزرو
+        $result = makeReservation($ticket_id, $travelers, $user);
+
+        if ($result['status'] === 'success') {
+            $message = "✅ رزرو با موفقیت انجام شد!\n"
+                . "🔑 کد رهگیری: {$result['rsid']}\n"
+                . "لطفاً این کد را نزد خود نگه دارید.";
+        } else {
+            $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
+                . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
+        }
+
+        // پاک کردن اطلاعات موقت
+        clearTemporaryFoodSelections($chat_id, $list_id);
+    } else {
+        $message = "✔️ انتخاب غذا ثبت شد.\n"
+            . "لطفاً برای سایر مسافران نیز غذا انتخاب کنید.";
+    }
+
+    // آپدیت پیام callback
+    answerCallbackQuery($callback_data['id'], $message);
+}
+
+function getFoodOptions($ticketId, $passengerCount)
+{
+    $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0/{$passengerCount}-0-0/0";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: text/html,application/xhtml+xml,application/xml;q=0.9',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    // استخراج گزینه‌های غذا از HTML
+    preg_match_all('/<option value="(\d+)">([^<]+)<\/option>/', $response, $matches);
+
+    $foodOptions = [];
+    for ($i = 0; $i < count($matches[1]); $i++) {
+        $foodOptions[] = [
+            'id' => $matches[1][$i],
+            'title' => trim($matches[2][$i])
+        ];
+    }
+
+    return $foodOptions;
+}
+
+function makeReservation($ticketId, $passengers, $user)
+{
+    $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0";
+
+    // تبدیل اطلاعات مسافران به فرمت مورد نیاز
+    $formattedPassengers = [];
+    foreach ($passengers as $index => $passenger) {
+        $formattedPassengers[] = [
+            'id' => $index + 1,
+            'depFoodPrice' => 0, // این مقدار باید بر اساس غذای انتخابی آپدیت شود
+            'retFoodPrice' => 0,
+            'sexType' => $passenger['gender'],
+            'name' => $passenger['first_name'],
+            'family' => $passenger['last_name'],
+            'nationalCode' => $passenger['national_code'],
+            'food' => $passenger['food_id'],
+            'return_food' => '',
+            'ageType' => $passenger['passenger_type'] == 1 ? 'adult' : ($passenger['passenger_type'] == 2 ? 'child' : 'infant'),
+            'isForeign' => false,
+            'isWheelchairOrdered' => false,
+            'errors' => []
+        ];
+    }
+
+    $postData = [
+        'passengers' => $formattedPassengers,
+        'user' => [
+            'fullName' => $user['fullName'],
+            'email' => $user['email'],
+            'mobileNumber' => $user['mobileNumber']
+        ],
+        'coupe' => 0,
+        'safarmarketId' => ''
+    ];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json',
+        'content-type: application/json',
+        'origin: https://ghasedak24.com',
+        'referer: https://ghasedak24.com/train/reservation/',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    return json_decode($response, true);
+}
+
+function modifyTicketMessage($message, $userTrip, $ticket, $lists)
+{
+    $keyboard = [
+        [
+            ['text' => 'تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/reservation/' . $ticket['id'] . '/0/' . $userTrip['count'] . '-0-0/' . $userTrip['coupe']]
+        ]
+    ];
+
+    // اضافه کردن دکمه برای هر لیست
+    foreach ($lists as $list) {
+        $keyboard[] = [
+            [
+                'text' => "رزرو برای لیست {$list['name']} ({$list['member_count']} نفر)",
+                'callback_data' => "reserve_list_{$list['id']}_{$ticket['id']}"
+            ]
+        ];
+    }
+
+    $replyMarkup = ['inline_keyboard' => $keyboard];
+
+    return [
+        'message' => $message,
+        'reply_markup' => $replyMarkup
+    ];
+}
+
+// تابع پردازش callback برای رزرو با لیست
+function handleListReservation($callback_data, $chat_id)
+{
+    // استخراج شناسه لیست و بلیط از callback_data
+    list(, $list_id, $ticket_id) = explode('_', $callback_data);
+
+    // دریافت لیست مسافران
+    $travelers = getTravelersFromList($list_id, $chat_id);
+    if (empty($travelers)) {
+        return "⚠️ خطا در دریافت اطلاعات مسافران";
+    }
+
+    // دریافت گزینه‌های غذا
+    $foodOptions = getFoodOptions($ticket_id, count($travelers));
+
+    // ارسال پیام برای انتخاب غذا برای هر مسافر
+    foreach ($travelers as $index => $traveler) {
+        $keyboard = [];
+        foreach ($foodOptions as $food) {
+            $keyboard[] = [['text' => $food['title'], 'callback_data' => "food_{$ticket_id}_{$list_id}_{$index}_{$food['id']}"]];
+        }
+
+        $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
+        sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
+    }
+
+    return "👥 لطفاً برای هر مسافر، غذای مورد نظر را انتخاب کنید.";
+}
+
+function answerCallbackQuery($callback_query_id, $text, $show_alert = false)
+{
+    global $telegram_api;
+
+    $url = $telegram_api . "/answerCallbackQuery";
+
+    $postData = [
+        'callback_query_id' => $callback_query_id,
+        'text' => $text,
+        'show_alert' => $show_alert
+    ];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    return json_decode($response, true);
+}
+
+// برای راحتی کار، یک تابع هم برای آپدیت پیام‌های قبلی می‌سازیم
+function editMessageText($chat_id, $message_id, $text, $reply_markup = null)
+{
+    global $telegram_api;
+
+    $url = $telegram_api . "/editMessageText";
+
+    $postData = [
+        'chat_id' => $chat_id,
+        'message_id' => $message_id,
+        'text' => $text,
+        'parse_mode' => 'Markdown'
+    ];
+
+    if ($reply_markup !== null) {
+        $postData['reply_markup'] = json_encode($reply_markup);
+    }
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    return json_decode($response, true);
 }
 
 // تابع کمکی برای تبدیل نوع مسافر به متن
