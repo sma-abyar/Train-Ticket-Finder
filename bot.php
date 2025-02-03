@@ -387,8 +387,11 @@ function sendMessage($chat_id, $text, $replyMarkup = null)
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-    curl_exec($ch);
+    $response = curl_exec($ch);
     curl_close($ch);
+    // Check if the message was sent successfully
+    $responseArray = json_decode($response, true);
+    return $responseArray['ok'] ?? false;
 }
 
 // Check for formats
@@ -718,7 +721,10 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'wheelchair_') === 0) {
         $wheelchair = str_replace('wheelchair_', '', $data);
         handleSetTravelerWheelchair($chat_id, $wheelchair);
-    }elseif (strpos($data, 'reserve_list_') === 0) {
+    } elseif (strpos($data, 'reserve_list_') === 0) {
+        // اضافه کردن لاگ
+        file_put_contents('debug.log', "Received callback: " . $data . "\n", FILE_APPEND);
+
         // مدیریت رزرو برای لیست
         $message = handleListReservation($data, $chat_id);
         answerCallbackQuery($callback_query['id'], "در حال پردازش درخواست...");
@@ -1665,7 +1671,8 @@ function handleFoodSelection($callback_data, $chat_id)
 function getFoodOptions($ticketId, $passengerCount)
 {
     $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0/{$passengerCount}-0-0/0";
-
+    file_put_contents('debug.log', "Requesting URL: $url\n", FILE_APPEND);
+    
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1673,21 +1680,42 @@ function getFoodOptions($ticketId, $passengerCount)
         'accept: text/html,application/xhtml+xml,application/xml;q=0.9',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
     ]);
-
+    
     $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
     curl_close($ch);
-
-    // استخراج گزینه‌های غذا از HTML
-    preg_match_all('/<option value="(\d+)">([^<]+)<\/option>/', $response, $matches);
-
-    $foodOptions = [];
-    for ($i = 0; $i < count($matches[1]); $i++) {
-        $foodOptions[] = [
-            'id' => $matches[1][$i],
-            'title' => trim($matches[2][$i])
-        ];
+    
+    file_put_contents('debug.log', "HTTP Code: $httpCode\n", FILE_APPEND);
+    if ($error) {
+        file_put_contents('debug.log', "CURL Error: $error\n", FILE_APPEND);
     }
-
+    
+    if ($httpCode !== 200 || empty($response)) {
+        file_put_contents('debug.log', "Failed to get response\n", FILE_APPEND);
+        return [];
+    }
+    
+    // لاگ کردن پاسخ دریافتی
+    file_put_contents('debug.log', "Response length: " . strlen($response) . "\n", FILE_APPEND);
+    
+    // استخراج گزینه‌های غذا
+    preg_match_all('/<option[^>]*value="([^"]*)"[^>]*>([^<]+)<\/option>/', $response, $matches);
+    file_put_contents('debug.log', "Matches: " . json_encode($matches) . "\n", FILE_APPEND);
+    
+    $foodOptions = [];
+    if (isset($matches[1]) && isset($matches[2])) {
+        for ($i = 0; $i < count($matches[1]); $i++) {
+            if (!empty($matches[1][$i]) && !empty($matches[2][$i])) {
+                $foodOptions[] = [
+                    'id' => $matches[1][$i],
+                    'title' => trim($matches[2][$i])
+                ];
+            }
+        }
+    }
+    
+    file_put_contents('debug.log', "Food options found: " . json_encode($foodOptions) . "\n", FILE_APPEND);
     return $foodOptions;
 }
 
@@ -1774,29 +1802,55 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 // تابع پردازش callback برای رزرو با لیست
 function handleListReservation($callback_data, $chat_id)
 {
+    file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
+    
     // استخراج شناسه لیست و بلیط از callback_data
-    list(, $list_id, $ticket_id) = explode('_', $callback_data);
-
+    // reserve_list_8_203229241 -> ['reserve', 'list', '8', '203229241']
+    $parts = explode('_', $callback_data);
+    if (count($parts) !== 4) {
+        file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
+        return "⚠️ خطا: فرمت داده نامعتبر است";
+    }
+    
+    $list_id = $parts[2];    // 8
+    $ticket_id = $parts[3];  // 203229241
+    
+    file_put_contents('debug.log', "List ID: $list_id, Ticket ID: $ticket_id\n", FILE_APPEND);;
+    
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
+    file_put_contents('debug.log', "Travelers: " . json_encode($travelers) . "\n", FILE_APPEND);
+    
     if (empty($travelers)) {
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
-
+    
     // دریافت گزینه‌های غذا
     $foodOptions = getFoodOptions($ticket_id, count($travelers));
-
-    // ارسال پیام برای انتخاب غذا برای هر مسافر
+    file_put_contents('debug.log', "Food options: " . json_encode($foodOptions) . "\n", FILE_APPEND);
+    
+    if (empty($foodOptions)) {
+        return "⚠️ خطا در دریافت گزینه‌های غذا";
+    }
+    
+    // بررسی مقادیر قبل از ارسال پیام
     foreach ($travelers as $index => $traveler) {
         $keyboard = [];
         foreach ($foodOptions as $food) {
             $keyboard[] = [['text' => $food['title'], 'callback_data' => "food_{$ticket_id}_{$list_id}_{$index}_{$food['id']}"]];
         }
-
         $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
-        sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
+        
+        file_put_contents('debug.log', "Sending message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
+        file_put_contents('debug.log', "Keyboard: " . json_encode($keyboard) . "\n", FILE_APPEND);
+        
+        $result = sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
+        if (!$result) {
+            file_put_contents('debug.log', "Failed to send message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
+            return "⚠️ خطا در ارسال پیام برای انتخاب غذا";
+        }
     }
-
+    
     return "👥 لطفاً برای هر مسافر، غذای مورد نظر را انتخاب کنید.";
 }
 
