@@ -248,6 +248,16 @@ function registerUser($chat_id, $username)
     sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard);
 }
 
+function isUserApproved($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE chat_id = :chat_id AND approved = 1");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    return $result['count'] > 0;
+}
+
+
 // approve new user
 function approveUser($chat_id)
 {
@@ -255,7 +265,7 @@ function approveUser($chat_id)
     $stmt = $db->prepare("UPDATE users SET approved = 1 WHERE chat_id = :chat_id");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
     $stmt->execute();
-    sendMessage($chat_id, "شما تأیید شدید!");
+    sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard());
 }
 
 // Get a list of approved users
@@ -866,9 +876,15 @@ function handleStartCommand($chat_id, $username, $update)
     $username = getUsernameFromMessage($update['message']);
     $username = escapeMarkdownV2($username);
     registerUser($chat_id, $username);
-    $keyboard = getMainMenuKeyboard();
-    sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
+
+    if (isUserApproved($chat_id)) {
+        $keyboard = getMainMenuKeyboard();
+        sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
+    } else {
+        sendMessage($chat_id, "⏳ حساب شما هنوز تأیید نشده است. لطفاً منتظر تأیید مدیر بمانید.");
+    }
 }
+
 
 function handleApproveCommand($chat_id, $text)
 {
