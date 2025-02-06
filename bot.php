@@ -123,6 +123,14 @@ function initDatabase()
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )");
 
+    // جدول لیست اطلاعات شخصی
+    $db->exec("CREATE TABLE IF NOT EXISTS private_info (
+    chat_id TEXT NOT NULL,
+    person_name TEXT NOT NULL,
+    phone_number INTEGER NOT NULL,
+    email TEXT
+    )");
+
     //     // جدول ارتباطی بین لیست‌ها و مسافران
 //     $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
 //     list_id INTEGER,
@@ -483,6 +491,11 @@ if (isset($update['callback_query'])) {
             showUserTrips($chat_id);
             sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: 1):");
             break;
+        case 'اطلاعات شخصی':
+            setUserState($chat_id, 'SET_PRIVATE_INFO');
+            // clearUserState($chat_id);
+            // showPrivateInfo($chat_id);
+            break;
         default:
             if (!$userState || !isset($userState['current_state'])) {
                 sendMessage($chat_id, "دوست خوبم🌹\nبیا بازیگوشی نکنیم و از گزینه‌های قرار داده شده استفاده کنیم😁");
@@ -576,12 +589,121 @@ if (isset($update['callback_query'])) {
             case 'SET_TRAVELER_LIST_MEMBERS':
                 handleSetTravelerListMembers($chat_id, $text);
                 break;
+            case 'SET_PRIVATE_INFO':
+                showPrivateInfo($chat_id);
+                // handleSetPrivateInfo($chat_id, $text);
+                break;
+            case 'awaiting_name':
+                $db = initDatabase();
+
+                $stmt = $db->prepare("SELECT chat_id FROM private_info WHERE chat_id = :chat_id");
+                $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+                $result = $stmt->execute();
+
+                if ($result->fetchArray(SQLITE3_ASSOC)) {
+                    $stmt = $db->prepare("UPDATE private_info SET person_name = :person_name WHERE chat_id = :chat_id");
+                } else {
+                    $stmt = $db->prepare("INSERT INTO private_info (chat_id, person_name, phone_number, email) VALUES (:chat_id, :person_name, '', '')");
+                }
+
+                $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+                $stmt->bindValue(':person_name', $text, SQLITE3_TEXT);
+                $stmt->execute();
+                $db->close(); // بستن دیتابیس بعد از عملیات
+
+                setUserState($chat_id, 'awaiting_phone');
+                sendMessage($chat_id, "📞 حالا لطفاً شماره تلفن خود را وارد کنید:");
+                break;
+
+            case 'awaiting_phone':
+                $db = initDatabase();
+
+                $stmt = $db->prepare("UPDATE private_info SET phone_number = :phone WHERE chat_id = :chat_id");
+                $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+                $stmt->bindValue(':phone', $text, SQLITE3_TEXT);
+
+                try {
+                    $stmt->execute();
+                    $db->close(); // بستن دیتابیس
+                } catch (Exception $e) {
+                    sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.");
+                    break;
+                }
+
+                setUserState($chat_id, 'awaiting_email');
+                sendMessage($chat_id, "📧 لطفاً ایمیل خود را وارد کنید (یا /skip را ارسال کنید):");
+                break;
+
+            case 'awaiting_email':
+                $db = initDatabase();
+
+                if ($text !== "/skip") {
+                    $stmt = $db->prepare("UPDATE private_info SET email = :email WHERE chat_id = :chat_id");
+                    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+                    $stmt->bindValue(':email', $text, SQLITE3_TEXT);
+
+                    try {
+                        $stmt->execute();
+                        $db->close(); // بستن دیتابیس
+                    } catch (Exception $e) {
+                        sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.");
+                        break;
+                    }
+                }
+
+                clearUserState($chat_id);
+                sendMessage($chat_id, "✅ اطلاعات شما با موفقیت ثبت شد.");
+                break;
+
             default:
                 sendMessage($chat_id, "در حال پردازش درخواست شما...");
         }
     }
 
 }
+
+function showPrivateInfo($chat_id)
+{
+    $db = initDatabase(); // مقداردهی دیتابیس
+    try {
+        // دریافت اطلاعات کاربر از دیتابیس
+        $stmt = $db->prepare("SELECT person_name, phone_number, email FROM private_info WHERE chat_id = :chat_id");
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $result = $stmt->execute();
+        $user_info = $result->fetchArray(SQLITE3_ASSOC);
+
+        if ($user_info) {
+            // اگر اطلاعات موجود باشد
+            $message = "✅ اطلاعات شخصی شما:\n";
+            $message .= "\n👤 نام: " . htmlspecialchars($user_info['person_name']);
+            $message .= "\n📞 شماره تلفن: " . htmlspecialchars($user_info['phone_number']);
+            $message .= "\n📧 ایمیل: " . ($user_info['email'] ? htmlspecialchars($user_info['email']) : '—');
+
+            $keyboard = [
+                "inline_keyboard" => [
+                    [["text" => "✏️ ویرایش اطلاعات", "callback_data" => "edit_private_info"]]
+                ]
+            ];
+        } else {
+            // اگر اطلاعاتی وجود نداشته باشد
+            $message = "ℹ️ اطلاعات شخصی شما ثبت نشده است.";
+            $keyboard = [
+                "inline_keyboard" => [
+                    [["text" => "➕ افزودن اطلاعات", "callback_data" => "add_private_info"]]
+                ]
+            ];
+        }
+
+        // ارسال پیام به کاربر با دکمه مربوطه
+        sendMessage($chat_id, $message, $keyboard);
+
+    } catch (Exception $e) {
+        sendMessage($chat_id, "⚠️ خطا در خواندن اطلاعات: " . $e->getMessage(), null);
+        error_log("خطا در خواندن اطلاعات شخصی: " . $e->getMessage());
+    }
+}
+
+
 
 function handleCallbackQuery($callback_query)
 {
@@ -732,6 +854,10 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'food_') === 0) {
         // مدیریت انتخاب غذا
         handleFoodSelection($callback_query, $chat_id);
+    } elseif ($data === "add_private_info") {
+        startAddingPrivateInfo($chat_id);
+    } elseif ($data === "edit_private_info") {
+        startAddingPrivateInfo($chat_id);
     } else {
         // اگر callback ناشناخته بود
         answerCallbackQuery($callback_query['id'], "درخواست نامعتبر!");
@@ -1073,6 +1199,11 @@ function handleSetTravelerListMembers($chat_id, $text)
     $traveler_ids = array_map('intval', explode(',', $text));
     $temp_data = getUserState($chat_id)['temp_data'];
 }
+
+// handleSetPrivateInfo($chat_id, $text)
+// {
+
+// }
 
 function handleShowTravelersCommand($chat_id)
 {
@@ -1636,11 +1767,7 @@ function handleFoodSelection($callback_data, $chat_id)
     // بررسی اینکه آیا همه مسافران غذای خود را انتخاب کرده‌اند
     if (isAllFoodSelected($chat_id, $list_id)) {
         // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
-        $user = [
-            'fullName' => 'سلام سلام',
-            'email' => '',
-            'mobileNumber' => '09211313456'
-        ];
+        $user = getPrivateInfo($chat_id);
 
         // دریافت اطلاعات مسافران با غذاهای انتخاب شده
         $travelers = getTravelersWithFood($chat_id, $list_id);
@@ -1748,7 +1875,7 @@ function makeReservation($ticketId, $passengers, $user)
         'user' => [
             'fullName' => $user['fullName'],
             'email' => $user['email'],
-            'mobileNumber' => $user['mobileNumber']
+            'mobileNumber' => '0' . $user['mobileNumber']
         ],
         'coupe' => 0,
         'safarmarketId' => ''
@@ -1805,7 +1932,6 @@ function handleListReservation($callback_data, $chat_id)
     file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
 
     // استخراج شناسه لیست و بلیط از callback_data
-    // reserve_list_8_203229241 -> ['reserve', 'list', '8', '203229241']
     $parts = explode('_', $callback_data);
     if (count($parts) !== 4) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
@@ -1816,7 +1942,6 @@ function handleListReservation($callback_data, $chat_id)
     $ticket_id = $parts[3];  // 203229241
 
     file_put_contents('debug.log', "List ID: $list_id, Ticket ID: $ticket_id\n", FILE_APPEND);
-    ;
 
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
@@ -1825,36 +1950,36 @@ function handleListReservation($callback_data, $chat_id)
     if (empty($travelers)) {
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
+    $user = getPrivateInfo($chat_id);
+    // sendMessage($chat_id, $user);
 
-    $user = [
-        'fullName' => 'سلام سلام',
-        'email' => '',
-        'mobileNumber' => '09211313456'
-    ];
-
-    $result = makeReservation($ticket_id, $travelers, $user);
-
+    file_put_contents('debug.log', "User data: " . json_encode($user) . "\n", FILE_APPEND);
     // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
-    $user = [
-        'fullName' => 'سلام سلام',
-        'email' => '',
-        'mobileNumber' => '09211313456'
-    ];
 
     // دریافت اطلاعات مسافران با غذاهای انتخاب شده
     $travelers = getTravelersWithFood($chat_id, $list_id);
 
     // انجام رزرو
     $result = makeReservation($ticket_id, $travelers, $user);
+    
+    $keyboard = [
+        [
+            ['text' => 'پرداخت و تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/confirm/' . $result['rsid']]
+        ]
+    ];
+    
+    $replyMarkup = ['inline_keyboard' => $keyboard];
 
     if ($result['status'] === 'success') {
-        $message = "✅ رزرو با موفقیت انجام شد!\n"
-            . "🔑 کد رهگیری: {$result['rsid']}\n"
-            . "لطفاً این کد را نزد خود نگه دارید.";
+        $message = "✅ اطلاعات با موفقیت ثبت شد!\n"
+            . "جهت هدایت به درگاه و پرداخت هزینه، روی گزینه‌ی زیر کلیک کنید:\n"
+            . "عدم پرداخت هزینه به منزله‌ی انصراف از تهیه‌ی بلیط خواهد بود.";
     } else {
         $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
             . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
     }
+
+    sendMessage($chat_id, $message, $replyMarkup);
 
     // پاک کردن اطلاعات موقت
     clearTemporaryFoodSelections($chat_id, $list_id);
@@ -2011,9 +2136,9 @@ function getMainMenuKeyboard()
             [
                 ['text' => 'نمایش مسافران'],
                 ['text' => 'لیست‌های مسافران']
-            ]
+            ],
             // [['text' => 'حذف سفر']],
-            // [['text' => 'راهنما']]
+            [['text' => 'اطلاعات شخصی']]
         ],
         'resize_keyboard' => true,
         'one_time_keyboard' => false
@@ -2104,6 +2229,54 @@ function addTravelerToList($chat_id, $list_id, $traveler_id)
         error_log("Error in addTravelerToList: " . $e->getMessage());
         return false;
     }
+}
+
+function startAddingPrivateInfo($chat_id)
+{
+    setUserState($chat_id, 'awaiting_name');
+    sendMessage($chat_id, "📝 لطفاً نام خود را وارد کنید:");
+}
+
+function startEditingPrivateInfo($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("SELECT person_name, phone_number, email FROM private_info WHERE chat_id = :chat_id");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+    $user_info = $result->fetchArray(SQLITE3_ASSOC);
+
+    if ($user_info) {
+        $message = "✏️ اطلاعات فعلی شما:\n";
+        $message .= "\n👤 نام: " . htmlspecialchars($user_info['person_name']);
+        $message .= "\n📞 شماره تلفن: " . htmlspecialchars($user_info['phone_number']);
+        $message .= "\n📧 ایمیل: " . ($user_info['email'] ? htmlspecialchars($user_info['email']) : '—');
+        $message .= "\n\n📝 لطفاً نام خود را وارد کنید:";
+
+        setUserState($chat_id, 'awaiting_name');
+        sendMessage($chat_id, $message);
+    } else {
+        sendMessage($chat_id, "⚠️ شما هیچ اطلاعاتی برای ویرایش ندارید. لطفاً ابتدا اطلاعات خود را ثبت کنید.");
+    }
+}
+
+
+function getPrivateInfo($chat_id)
+{
+    $db = initDatabase();
+
+    $stmt = $db->prepare("SELECT person_name, email, phone_number FROM private_info WHERE chat_id = :chat_id");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+
+    $result = $stmt->execute();
+    $userData = $result->fetchArray(SQLITE3_ASSOC);
+
+    $db->close();
+
+    return [
+        'fullName' => isset($userData['person_name']) ? $userData['person_name'] : '',
+        'email' => isset($userData['email']) ? $userData['email'] : '',
+        'mobileNumber' => isset($userData['phone_number']) ? $userData['phone_number'] : ''
+    ];
 }
 
 ?>
