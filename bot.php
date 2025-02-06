@@ -1637,9 +1637,9 @@ function handleFoodSelection($callback_data, $chat_id)
     if (isAllFoodSelected($chat_id, $list_id)) {
         // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
         $user = [
-            'fullName' => 'نام کاربر',
+            'fullName' => 'سلام سلام',
             'email' => '',
-            'mobileNumber' => '09XXXXXXXXX'
+            'mobileNumber' => '09211313456'
         ];
 
         // دریافت اطلاعات مسافران با غذاهای انتخاب شده
@@ -1672,7 +1672,7 @@ function getFoodOptions($ticketId, $passengerCount)
 {
     $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0/{$passengerCount}-0-0/0";
     file_put_contents('debug.log', "Requesting URL: $url\n", FILE_APPEND);
-    
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1680,30 +1680,30 @@ function getFoodOptions($ticketId, $passengerCount)
         'accept: text/html,application/xhtml+xml,application/xml;q=0.9',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
     ]);
-    
+
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
     curl_close($ch);
-    
+
     file_put_contents('debug.log', "HTTP Code: $httpCode\n", FILE_APPEND);
     if ($error) {
         file_put_contents('debug.log', "CURL Error: $error\n", FILE_APPEND);
     }
-    
+
     if ($httpCode !== 200 || empty($response)) {
         file_put_contents('debug.log', "Failed to get response\n", FILE_APPEND);
         return [];
     }
-    
+
     // لاگ کردن پاسخ برای بررسی
     file_put_contents('debug.log', "Response sample: " . substr($response, 0, 500) . "\n", FILE_APPEND);
-    
+
     // استخراج گزینه‌های غذا
     preg_match_all('/<option[^>]*value="(\d+)"[^>]*>\s*([^<]+?)\s*<\/option>/u', $response, $matches);
-    
+
     file_put_contents('debug.log', "Matches found: " . json_encode($matches, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
-    
+
     $foodOptions = [];
     if (!empty($matches[1]) && !empty($matches[2])) {
         for ($i = 0; $i < count($matches[1]); $i++) {
@@ -1713,7 +1713,7 @@ function getFoodOptions($ticketId, $passengerCount)
             ];
         }
     }
-    
+
     file_put_contents('debug.log', "Final food options: " . json_encode($foodOptions, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
     return $foodOptions;
 }
@@ -1803,7 +1803,7 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 function handleListReservation($callback_data, $chat_id)
 {
     file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
-    
+
     // استخراج شناسه لیست و بلیط از callback_data
     // reserve_list_8_203229241 -> ['reserve', 'list', '8', '203229241']
     $parts = explode('_', $callback_data);
@@ -1811,47 +1811,82 @@ function handleListReservation($callback_data, $chat_id)
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
         return "⚠️ خطا: فرمت داده نامعتبر است";
     }
-    
+
     $list_id = $parts[2];    // 8
     $ticket_id = $parts[3];  // 203229241
-    
-    file_put_contents('debug.log', "List ID: $list_id, Ticket ID: $ticket_id\n", FILE_APPEND);;
-    
+
+    file_put_contents('debug.log', "List ID: $list_id, Ticket ID: $ticket_id\n", FILE_APPEND);
+    ;
+
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
     file_put_contents('debug.log', "Travelers: " . json_encode($travelers) . "\n", FILE_APPEND);
-    
+
     if (empty($travelers)) {
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
-    
-    // دریافت گزینه‌های غذا
-    $foodOptions = getFoodOptions($ticket_id, count($travelers));
-    file_put_contents('debug.log', "Food options: " . json_encode($foodOptions) . "\n", FILE_APPEND);
-    
-    if (empty($foodOptions)) {
-        return "⚠️ خطا در دریافت گزینه‌های غذا";
+
+    $user = [
+        'fullName' => 'سلام سلام',
+        'email' => '',
+        'mobileNumber' => '09211313456'
+    ];
+
+    $result = makeReservation($ticket_id, $travelers, $user);
+
+    // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
+    $user = [
+        'fullName' => 'سلام سلام',
+        'email' => '',
+        'mobileNumber' => '09211313456'
+    ];
+
+    // دریافت اطلاعات مسافران با غذاهای انتخاب شده
+    $travelers = getTravelersWithFood($chat_id, $list_id);
+
+    // انجام رزرو
+    $result = makeReservation($ticket_id, $travelers, $user);
+
+    if ($result['status'] === 'success') {
+        $message = "✅ رزرو با موفقیت انجام شد!\n"
+            . "🔑 کد رهگیری: {$result['rsid']}\n"
+            . "لطفاً این کد را نزد خود نگه دارید.";
+    } else {
+        $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
+            . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
     }
-    
-    // بررسی مقادیر قبل از ارسال پیام
-    foreach ($travelers as $index => $traveler) {
-        $keyboard = [];
-        foreach ($foodOptions as $food) {
-            $keyboard[] = [['text' => $food['title'], 'callback_data' => "food_{$ticket_id}_{$list_id}_{$index}_{$food['id']}"]];
-        }
-        $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
-        
-        file_put_contents('debug.log', "Sending message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
-        file_put_contents('debug.log', "Keyboard: " . json_encode($keyboard) . "\n", FILE_APPEND);
-        
-        $result = sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
-        if (!$result) {
-            file_put_contents('debug.log', "Failed to send message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
-            return "⚠️ خطا در ارسال پیام برای انتخاب غذا";
-        }
-    }
-    
-    return "👥 لطفاً برای هر مسافر، غذای مورد نظر را انتخاب کنید.";
+
+    // پاک کردن اطلاعات موقت
+    clearTemporaryFoodSelections($chat_id, $list_id);
+
+
+    // // دریافت گزینه‌های غذا
+    // $foodOptions = getFoodOptions($ticket_id, count($travelers));
+    // file_put_contents('debug.log', "Food options: " . json_encode($foodOptions) . "\n", FILE_APPEND);
+
+    // if (empty($foodOptions)) {
+    //     return "⚠️ خطا در دریافت گزینه‌های غذا";
+    // }
+
+    // // بررسی مقادیر قبل از ارسال پیام
+    // foreach ($travelers as $index => $traveler) {
+    //     $keyboard = [];
+    //     foreach ($foodOptions as $food) {
+    //         $keyboard[] = [['text' => $food['title'], 'callback_data' => "food_{$ticket_id}_{$list_id}_{$index}_{$food['id']}"]];
+    //     }
+    //     $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
+
+    //     file_put_contents('debug.log', "Sending message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
+    //     file_put_contents('debug.log', "Keyboard: " . json_encode($keyboard) . "\n", FILE_APPEND);
+
+    //     $result = sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
+    //     if (!$result) {
+    //         file_put_contents('debug.log', "Failed to send message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
+    //         return "⚠️ خطا در ارسال پیام برای انتخاب غذا";
+    //     }
+    // }
+
+    // return "👥 لطفاً برای هر مسافر، غذای مورد نظر را انتخاب کنید.";
 }
 
 function answerCallbackQuery($callback_query_id, $text, $show_alert = false)
