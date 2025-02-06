@@ -1934,12 +1934,7 @@ function handleListReservation($callback_data, $chat_id)
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
 
-    // دریافت گزینه‌های غذا
-    $foodOptions = getFoodOptions($ticket_id, count($travelers));
-    if (empty($foodOptions)) {
-        return "⚠️ خطا در دریافت گزینه‌های غذا";
-    }
-
+    
     // ذخیره اطلاعات در سشن برای استفاده بعدی
     saveReservationSession($chat_id, [
         'list_id' => $list_id,
@@ -1947,7 +1942,13 @@ function handleListReservation($callback_data, $chat_id)
         'current_passenger_index' => 0,
         'total_passengers' => count($travelers)
     ]);
-
+    
+    // دریافت گزینه‌های غذا
+    $foodOptions = getFoodOptions($ticket_id, count($travelers));
+    if (empty($foodOptions)) {
+        return completeReservation($chat_id);
+    }
+    
     // نمایش منوی انتخاب غذا برای اولین مسافر
     return showFoodSelectionForPassenger($chat_id, $travelers[0], $foodOptions, 0);
 }
