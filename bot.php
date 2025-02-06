@@ -131,14 +131,12 @@ function initDatabase()
     email TEXT
     )");
 
-    //     // جدول ارتباطی بین لیست‌ها و مسافران
-//     $db->exec("CREATE TABLE IF NOT EXISTS traveler_list_members (
-//     list_id INTEGER,
-//     traveler_id INTEGER,
-//     FOREIGN KEY (list_id) REFERENCES traveler_lists(id) ON DELETE CASCADE,
-//     FOREIGN KEY (traveler_id) REFERENCES travelers(id) ON DELETE CASCADE,
-//     PRIMARY KEY (list_id, traveler_id)
-// )");
+    $db->exec("CREATE TABLE IF NOT EXISTS reservation_sessions (
+    chat_id TEXT PRIMARY KEY,
+    session_data TEXT,
+    created_at DATETIME,
+    UNIQUE(chat_id)
+)");
 
     // Add user_states table
     $db->exec("CREATE TABLE IF NOT EXISTS user_states (
@@ -710,6 +708,7 @@ function handleCallbackQuery($callback_query)
     $chat_id = $callback_query['message']['chat']['id'];
     $data = $callback_query['data'];
     $message_id = $callback_query['message']['message_id'];
+    file_put_contents('debug.log', "Callback Query received: " . print_r($callback_query, true) . "\n", FILE_APPEND);
 
     if ($data === 'add_traveler') {
         // Start the traveler addition process
@@ -846,14 +845,12 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'reserve_list_') === 0) {
         // اضافه کردن لاگ
         file_put_contents('debug.log', "Received callback: " . $data . "\n", FILE_APPEND);
-
-        // مدیریت رزرو برای لیست
-        $message = handleListReservation($data, $chat_id);
-        answerCallbackQuery($callback_query['id'], "در حال پردازش درخواست...");
-        editMessageText($chat_id, $message_id, $message);
+        handleListReservation($data, $chat_id);
     } elseif (strpos($data, 'food_') === 0) {
         // مدیریت انتخاب غذا
-        handleFoodSelection($callback_query, $chat_id);
+        handleFoodSelection($data, $chat_id, $callback_query['id']);
+    } elseif (strpos($data, 'select_food_') === 0) {
+        handleFoodSelection($data, $chat_id, $callback_query['id']);
     } elseif ($data === "add_private_info") {
         startAddingPrivateInfo($chat_id);
     } elseif ($data === "edit_private_info") {
@@ -1408,16 +1405,6 @@ function createTravelerList($chat_id, $name)
         $stmt->bindValue(':name', $name, SQLITE3_TEXT);
         $stmt->execute();
 
-        // $list_id = $db->lastInsertRowID();
-
-        // // اضافه کردن مسافران به لیست
-        // $stmt = $db->prepare("INSERT INTO traveler_list_members (list_id, traveler_id) VALUES (:list_id, :traveler_id)");
-        // foreach ($traveler_ids as $traveler_id) {
-        //     $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
-        //     $stmt->bindValue(':traveler_id', $traveler_id, SQLITE3_INTEGER);
-        //     $stmt->execute();
-        // }
-
         $db->exec('COMMIT');
         return true;
     } catch (Exception $e) {
@@ -1756,44 +1743,44 @@ function getTravelersFromList($list_id, $chat_id)
         return [];
     }
 }
-function handleFoodSelection($callback_data, $chat_id)
-{
-    // استخراج اطلاعات از callback_data
-    list(, $ticket_id, $list_id, $passenger_index, $food_id) = explode('_', $callback_data);
+// function handleFoodSelection($callback_data, $chat_id)
+// {
+//     // استخراج اطلاعات از callback_data
+//     list(, $ticket_id, $list_id, $passenger_index, $food_id) = explode('_', $callback_data);
 
-    // ذخیره انتخاب غذا در session یا دیتابیس موقت
-    saveTemporaryFoodSelection($chat_id, $list_id, $passenger_index, $food_id);
+//     // ذخیره انتخاب غذا در session یا دیتابیس موقت
+//     saveTemporaryFoodSelection($chat_id, $list_id, $passenger_index, $food_id);
 
-    // بررسی اینکه آیا همه مسافران غذای خود را انتخاب کرده‌اند
-    if (isAllFoodSelected($chat_id, $list_id)) {
-        // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
-        $user = getPrivateInfo($chat_id);
+//     // بررسی اینکه آیا همه مسافران غذای خود را انتخاب کرده‌اند
+//     if (isAllFoodSelected($chat_id, $list_id)) {
+//         // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
+//         $user = getPrivateInfo($chat_id);
 
-        // دریافت اطلاعات مسافران با غذاهای انتخاب شده
-        $travelers = getTravelersWithFood($chat_id, $list_id);
+//         // دریافت اطلاعات مسافران با غذاهای انتخاب شده
+//         $travelers = getTravelersWithFood($chat_id, $list_id);
 
-        // انجام رزرو
-        $result = makeReservation($ticket_id, $travelers, $user);
+//         // انجام رزرو
+//         $result = makeReservation($ticket_id, $travelers, $user);
 
-        if ($result['status'] === 'success') {
-            $message = "✅ رزرو با موفقیت انجام شد!\n"
-                . "🔑 کد رهگیری: {$result['rsid']}\n"
-                . "لطفاً این کد را نزد خود نگه دارید.";
-        } else {
-            $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
-                . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
-        }
+//         if ($result['status'] === 'success') {
+//             $message = "✅ رزرو با موفقیت انجام شد!\n"
+//                 . "🔑 کد رهگیری: {$result['rsid']}\n"
+//                 . "لطفاً این کد را نزد خود نگه دارید.";
+//         } else {
+//             $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
+//                 . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
+//         }
 
-        // پاک کردن اطلاعات موقت
-        clearTemporaryFoodSelections($chat_id, $list_id);
-    } else {
-        $message = "✔️ انتخاب غذا ثبت شد.\n"
-            . "لطفاً برای سایر مسافران نیز غذا انتخاب کنید.";
-    }
+//         // پاک کردن اطلاعات موقت
+//         clearTemporaryFoodSelections($chat_id, $list_id);
+//     } else {
+//         $message = "✔️ انتخاب غذا ثبت شد.\n"
+//             . "لطفاً برای سایر مسافران نیز غذا انتخاب کنید.";
+//     }
 
-    // آپدیت پیام callback
-    answerCallbackQuery($callback_data['id'], $message);
-}
+//     // آپدیت پیام callback
+//     answerCallbackQuery($callback_data['id'], $message);
+// }
 
 function getFoodOptions($ticketId, $passengerCount)
 {
@@ -1926,41 +1913,111 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
     ];
 }
 
-// تابع پردازش callback برای رزرو با لیست
+// تابع اصلی برای شروع فرآیند رزرو با لیست
 function handleListReservation($callback_data, $chat_id)
 {
     file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
-
-    // استخراج شناسه لیست و بلیط از callback_data
+    
+    // استخراج شناسه لیست و بلیط
     $parts = explode('_', $callback_data);
     if (count($parts) !== 4) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
         return "⚠️ خطا: فرمت داده نامعتبر است";
     }
-
-    $list_id = $parts[2];    // 8
-    $ticket_id = $parts[3];  // 203229241
-
-    file_put_contents('debug.log', "List ID: $list_id, Ticket ID: $ticket_id\n", FILE_APPEND);
-
+    
+    $list_id = $parts[2];
+    $ticket_id = $parts[3];
+    
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
-    file_put_contents('debug.log', "Travelers: " . json_encode($travelers) . "\n", FILE_APPEND);
-
     if (empty($travelers)) {
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
+
+    // دریافت گزینه‌های غذا
+    $foodOptions = getFoodOptions($ticket_id, count($travelers));
+    if (empty($foodOptions)) {
+        return "⚠️ خطا در دریافت گزینه‌های غذا";
+    }
+
+    // ذخیره اطلاعات در سشن برای استفاده بعدی
+    saveReservationSession($chat_id, [
+        'list_id' => $list_id,
+        'ticket_id' => $ticket_id,
+        'current_passenger_index' => 0,
+        'total_passengers' => count($travelers)
+    ]);
+
+    // نمایش منوی انتخاب غذا برای اولین مسافر
+    return showFoodSelectionForPassenger($chat_id, $travelers[0], $foodOptions, 0);
+}
+
+// تابع نمایش منوی انتخاب غذا برای هر مسافر
+function showFoodSelectionForPassenger($chat_id, $traveler, $foodOptions, $index)
+{
+    $keyboard = [];
+    foreach ($foodOptions as $food) {
+        $keyboard[] = [['text' => $food['title'], 'callback_data' => "select_food_{$index}_{$food['id']}"]];
+    }
+    
+    file_put_contents('debug.log', "Generated keyboard: " . print_r($keyboard, true) . "\n", FILE_APPEND);
+    
+    $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
+    return sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
+}
+// تابع مدیریت انتخاب غذا
+function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null){
+    file_put_contents('debug.log', "Received callback_data in handleFoodSelection: " . print_r($callback_data, true) . "\n", FILE_APPEND);
+    
+    $parts = explode('_', $callback_data);
+    file_put_contents('debug.log', "Parts: " . print_r($parts, true) . "\n", FILE_APPEND);
+    
+    $passenger_index = $parts[2];
+    $food_id = $parts[3];
+    
+    $session = getReservationSession($chat_id);
+    file_put_contents('debug.log', "Session data: " . print_r($session, true) . "\n", FILE_APPEND);
+    
+    if (!$session) {
+        sendMessage($chat_id, "⚠️ خطا: اطلاعات جلسه یافت نشد");
+        return;
+    }
+    
+    $total_passengers = $session['total_passengers'];
+    $next_index = intval($passenger_index) + 1;
+    
+    // ذخیره انتخاب غذا
+    saveTemporaryFoodSelection($chat_id, $session['list_id'], $passenger_index, $food_id);
+    
+    if ($next_index < $total_passengers) {
+        // هنوز مسافران دیگری باقی مانده‌اند
+        $travelers = getTravelersFromList($session['list_id'], $chat_id);
+        $foodOptions = getFoodOptions($session['ticket_id'], $total_passengers);
+        
+        if ($callback_query_id) {
+            answerCallbackQuery($callback_query_id, "✅ غذا برای مسافر " . ($passenger_index + 1) . " ثبت شد");
+        }
+        
+        // ارسال پیام تأیید به کاربر
+        sendMessage($chat_id, "✅ غذا برای مسافر " . ($passenger_index + 1) . " ثبت شد");
+        
+        // نمایش منوی غذا برای مسافر بعدی
+        return showFoodSelectionForPassenger($chat_id, $travelers[$next_index], $foodOptions, $next_index);
+    } else {
+        // همه مسافران غذای خود را انتخاب کرده‌اند
+        sendMessage($chat_id, "✅ غذای همه مسافران ثبت شد. در حال تکمیل رزرو...");
+        return completeReservation($chat_id);
+    }
+}
+
+// تابع تکمیل رزرو
+function completeReservation($chat_id)
+{
+    $session = getReservationSession($chat_id);
     $user = getPrivateInfo($chat_id);
-    // sendMessage($chat_id, $user);
-
-    file_put_contents('debug.log', "User data: " . json_encode($user) . "\n", FILE_APPEND);
-    // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
-
-    // دریافت اطلاعات مسافران با غذاهای انتخاب شده
-    $travelers = getTravelersWithFood($chat_id, $list_id);
-
-    // انجام رزرو
-    $result = makeReservation($ticket_id, $travelers, $user);
+    $travelers = getTravelersWithFood($chat_id, $session['list_id']);
+    
+    $result = makeReservation($session['ticket_id'], $travelers, $user);
     
     $keyboard = [
         [
@@ -1969,7 +2026,7 @@ function handleListReservation($callback_data, $chat_id)
     ];
     
     $replyMarkup = ['inline_keyboard' => $keyboard];
-
+    
     if ($result['status'] === 'success') {
         $message = "✅ اطلاعات با موفقیت ثبت شد!\n"
             . "جهت هدایت به درگاه و پرداخت هزینه، روی گزینه‌ی زیر کلیک کنید:\n"
@@ -1978,40 +2035,51 @@ function handleListReservation($callback_data, $chat_id)
         $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
             . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
     }
+    
+    // پاک کردن اطلاعات موقت و سشن
+    clearTemporaryFoodSelections($chat_id, $session['list_id']);
+    clearReservationSession($chat_id);
+    
+    return sendMessage($chat_id, $message, $replyMarkup);
+}
 
-    sendMessage($chat_id, $message, $replyMarkup);
+// توابع کمکی برای مدیریت سشن
+function saveReservationSession($chat_id, $data)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("
+        INSERT OR REPLACE INTO reservation_sessions 
+        (chat_id, session_data, created_at)
+        VALUES (:chat_id, :session_data, datetime('now'))
+    ");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $stmt->bindValue(':session_data', json_encode($data), SQLITE3_TEXT);
+    $stmt->execute();
+}
 
-    // پاک کردن اطلاعات موقت
-    clearTemporaryFoodSelections($chat_id, $list_id);
+function getReservationSession($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("
+        SELECT session_data 
+        FROM reservation_sessions 
+        WHERE chat_id = :chat_id
+    ");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $result = $stmt->execute();
+    $row = $result->fetchArray(SQLITE3_ASSOC);
+    return $row ? json_decode($row['session_data'], true) : null;
+}
 
-
-    // // دریافت گزینه‌های غذا
-    // $foodOptions = getFoodOptions($ticket_id, count($travelers));
-    // file_put_contents('debug.log', "Food options: " . json_encode($foodOptions) . "\n", FILE_APPEND);
-
-    // if (empty($foodOptions)) {
-    //     return "⚠️ خطا در دریافت گزینه‌های غذا";
-    // }
-
-    // // بررسی مقادیر قبل از ارسال پیام
-    // foreach ($travelers as $index => $traveler) {
-    //     $keyboard = [];
-    //     foreach ($foodOptions as $food) {
-    //         $keyboard[] = [['text' => $food['title'], 'callback_data' => "food_{$ticket_id}_{$list_id}_{$index}_{$food['id']}"]];
-    //     }
-    //     $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
-
-    //     file_put_contents('debug.log', "Sending message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
-    //     file_put_contents('debug.log', "Keyboard: " . json_encode($keyboard) . "\n", FILE_APPEND);
-
-    //     $result = sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
-    //     if (!$result) {
-    //         file_put_contents('debug.log', "Failed to send message for traveler: " . json_encode($traveler) . "\n", FILE_APPEND);
-    //         return "⚠️ خطا در ارسال پیام برای انتخاب غذا";
-    //     }
-    // }
-
-    // return "👥 لطفاً برای هر مسافر، غذای مورد نظر را انتخاب کنید.";
+function clearReservationSession($chat_id)
+{
+    $db = initDatabase();
+    $stmt = $db->prepare("
+        DELETE FROM reservation_sessions 
+        WHERE chat_id = :chat_id
+    ");
+    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+    $stmt->execute();
 }
 
 function answerCallbackQuery($callback_query_id, $text, $show_alert = false)
