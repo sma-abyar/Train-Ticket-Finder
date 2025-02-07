@@ -341,7 +341,7 @@ function fetchTickets($userTrip)
                         . "📝 *آیدی سفر*: {$userTrip['id']} - {$route_title}\n"
                         . "🚂 *شماره قطار*: {$ticket['train_number']}\n"
                         . "🚋 *نام قطار*: {$ticket['wagon_name']}\n"
-                        . "💺 *نوع بلیط*: {$postFields['type']}\n"
+                        . "💺 *نوع بلیط*: " . getTripType($userTrip['type']) . "\n"
                         . "🗓 *تاریخ حرکت*: {$ticket['jdate_fa']}\n"
                         . "⏰ *زمان حرکت*: {$ticket['time']}\n"
                         . "📊 *ظرفیت باقی‌مانده*: {$ticket['counting']}\n"
@@ -383,10 +383,28 @@ function updateNotificationStatus($userTripId, $field)
 
 
 // Send message to user
+function toPersianNumbers($string)
+{
+    $persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $englishNumbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    return str_replace($englishNumbers, $persianNumbers, $string);
+}
+
+function toEnglishNumbers($string)
+{
+    $persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    $englishNumbers = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    return str_replace($persianNumbers, $englishNumbers, $string);
+}
+
+
 function sendMessage($chat_id, $text, $replyMarkup = null)
 {
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/sendMessage";
+
+    // تبدیل اعداد انگلیسی به فارسی
+    $text = toPersianNumbers($text);
 
     $postData = [
         'chat_id' => $chat_id,
@@ -405,10 +423,11 @@ function sendMessage($chat_id, $text, $replyMarkup = null)
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     $response = curl_exec($ch);
     curl_close($ch);
-    // Check if the message was sent successfully
+
     $responseArray = json_decode($response, true);
     return $responseArray['ok'] ?? false;
 }
+
 
 // Check for formats
 function escapeMarkdownV2($text)
@@ -438,7 +457,7 @@ if (isset($update['callback_query'])) {
     handleCallbackQuery($update['callback_query']);
 } elseif (isset($update['message'])) {
     $chat_id = $update['message']['chat']['id'];
-    $text = $update['message']['text'];
+    $text = toEnglishNumbers($update['message']['text']);
 
     // Handle cancel button
     if ($text === 'لغو') {
@@ -952,8 +971,9 @@ function handleShowTripsCommand($chat_id)
     foreach ($trips as $trip) {
         $message .= "ID: {$trip['id']}\n"
             . "مسیر: {$trip['route']}\n"
-            . "تاریخ رفت: {$trip['date']}\n"
-            . "نوع: {$trip['type']}\n"
+            . "تاریخ رفت: \u{200E}{$trip['date']}\n" // اعمال RLE برای درست شدن جهت تاریخ
+            . "نوع بلیط: " . getTripType($trip['type']) . "\n"
+            . "کوپه دربست: " . getTripCoupe($trip['coupe']) . "\n"
             . "-----------------------\n";
     }
 
@@ -969,7 +989,7 @@ function handleSetTripRoute($chat_id, $text)
 {
     $route = $text;
     setUserState($chat_id, 'SET_TRIP_DATE', ['route' => $route]);
-    sendMessage($chat_id, "لطفاً تاریخ رفت را وارد کنید (مثال: 1403-11-02):");
+    sendMessage($chat_id, "لطفاً تاریخ رفت را وارد کنید (مثال: \u{200E}۱۴۰۳-۱۲-۲۳):");
 }
 
 function handleSetTripDate($chat_id, $text)
@@ -977,8 +997,9 @@ function handleSetTripDate($chat_id, $text)
     $date = $text;
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['date'] = $date;
-    setUserState($chat_id, 'SET_TRIP_RETURN_DATE', $temp_data);
-    sendMessage($chat_id, "لطفاً تاریخ برگشت را وارد کنید (اگر یک طرفه است، خالی بگذارید):");
+    $temp_data['return_date'] = $date;
+    setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
+    sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
 }
 
 function handleSetTripReturnDate($chat_id, $text)
@@ -1237,10 +1258,10 @@ function handleShowTravelersCommand($chat_id)
     }
 
     $message = "لیست مسافران شما:\n\n";
-    foreach ($travelers as $traveler) {
+    foreach ($travelers as $index => $traveler) {
         $typeText = getPassengerTypeText($traveler['passenger_type']);
         $genderText = getGenderText($traveler['gender']);
-        $message .= "*{$traveler['id']}.* {$traveler['first_name']} {$traveler['last_name']}\n"
+        $message .= "*" . ($index + 1) . "* {$traveler['first_name']} {$traveler['last_name']}\n"
             . "نوع: $typeText | جنسیت: $genderText\n"
             . "کد ملی: {$traveler['national_code']}\n"
             . "───────────────\n";
@@ -1272,12 +1293,13 @@ function handleShowTravelerListsCommand($chat_id)
     }
 
     $message = "لیست‌های مسافران شما:\n\n";
-    foreach ($lists as $list) {
-        $message .= "*{$list['id']}.* {$list['name']}\n"
+    foreach ($lists as $index => $list) {
+        $message .= "*" . ($index + 1) . ".* {$list['name']}\n" // نمایش ایندکس (شروع از ۱)
             . "تعداد مسافران: {$list['member_count']}\n"
             . "مسافران: {$list['members']}\n"
             . "───────────────\n";
     }
+
 
     // Add the "حذف لیست مسافر" and "افزودن مسافر به لیست" buttons if $lists is not empty
     $inlineKeyboard['inline_keyboard'][] = [
@@ -1347,11 +1369,35 @@ function showUserTrips($chat_id)
         $message .= "ID: {$trip['id']}\n"
             . "مسیر: {$trip['route']}\n"
             . "تاریخ رفت: {$trip['date']}\n"
-            . "نوع: {$trip['type']}\n"
+            . "نوع: " . getTripType($trip['type']) . "\n"
+            . "کوپه دربست: " . getTripCoupe($trip['coupe']) . "\n"
             . "-----------------------\n";
     }
     sendMessage($chat_id, $message);
 }
+
+
+function getTripType($type)
+{
+    $typeMap = [
+        0 => "معمولی",
+        1 => "ویژه‌ی برادران",
+        2 => "ویژه‌ی خواهران"
+    ];
+
+    return $typeMap[$type] ?? "نامشخص"; // مقدار پیش‌فرض برای مقادیر نامعتبر
+}
+
+function getTripCoupe($type)
+{
+    $typeMap = [
+        0 => "خیر",
+        1 => "بله"
+    ];
+
+    return $typeMap[$type] ?? "نامشخص"; // مقدار پیش‌فرض برای مقادیر نامعتبر
+}
+
 
 // Remove a trip for a user
 function removeUserTrip($chat_id, $trip_id)
@@ -1913,9 +1959,10 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 
     // اضافه کردن دکمه برای هر لیست
     foreach ($lists as $list) {
+        $member_count = toPersianNumbers($list['member_count']);
         $keyboard[] = [
             [
-                'text' => "رزرو برای لیست {$list['name']} ({$list['member_count']} نفر)",
+                'text' => "رزرو برای لیست {$list['name']} ({$member_count} نفر)",
                 'callback_data' => "reserve_list_{$list['id']}_{$ticket['id']}"
             ]
         ];
@@ -1933,24 +1980,24 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 function handleListReservation($callback_data, $chat_id)
 {
     file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
-    
+
     // استخراج شناسه لیست و بلیط
     $parts = explode('_', $callback_data);
     if (count($parts) !== 4) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
         return "⚠️ خطا: فرمت داده نامعتبر است";
     }
-    
+
     $list_id = $parts[2];
     $ticket_id = $parts[3];
-    
+
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
     if (empty($travelers)) {
         return "⚠️ خطا در دریافت اطلاعات مسافران";
     }
 
-    
+
     // ذخیره اطلاعات در سشن برای استفاده بعدی
     saveReservationSession($chat_id, [
         'list_id' => $list_id,
@@ -1958,13 +2005,13 @@ function handleListReservation($callback_data, $chat_id)
         'current_passenger_index' => 0,
         'total_passengers' => count($travelers)
     ]);
-    
+
     // دریافت گزینه‌های غذا
     $foodOptions = getFoodOptions($ticket_id, count($travelers));
     if (empty($foodOptions)) {
         return completeReservation($chat_id);
     }
-    
+
     // نمایش منوی انتخاب غذا برای اولین مسافر
     return showFoodSelectionForPassenger($chat_id, $travelers[0], $foodOptions, 0);
 }
@@ -1976,48 +2023,49 @@ function showFoodSelectionForPassenger($chat_id, $traveler, $foodOptions, $index
     foreach ($foodOptions as $food) {
         $keyboard[] = [['text' => $food['title'], 'callback_data' => "select_food_{$index}_{$food['id']}"]];
     }
-    
+
     file_put_contents('debug.log', "Generated keyboard: " . print_r($keyboard, true) . "\n", FILE_APPEND);
-    
+
     $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
     return sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
 }
 // تابع مدیریت انتخاب غذا
-function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null){
+function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null)
+{
     file_put_contents('debug.log', "Received callback_data in handleFoodSelection: " . print_r($callback_data, true) . "\n", FILE_APPEND);
-    
+
     $parts = explode('_', $callback_data);
     file_put_contents('debug.log', "Parts: " . print_r($parts, true) . "\n", FILE_APPEND);
-    
+
     $passenger_index = $parts[2];
     $food_id = $parts[3];
-    
+
     $session = getReservationSession($chat_id);
     file_put_contents('debug.log', "Session data: " . print_r($session, true) . "\n", FILE_APPEND);
-    
+
     if (!$session) {
         sendMessage($chat_id, "⚠️ خطا: اطلاعات جلسه یافت نشد");
         return;
     }
-    
+
     $total_passengers = $session['total_passengers'];
     $next_index = intval($passenger_index) + 1;
-    
+
     // ذخیره انتخاب غذا
     saveTemporaryFoodSelection($chat_id, $session['list_id'], $passenger_index, $food_id);
-    
+
     if ($next_index < $total_passengers) {
         // هنوز مسافران دیگری باقی مانده‌اند
         $travelers = getTravelersFromList($session['list_id'], $chat_id);
         $foodOptions = getFoodOptions($session['ticket_id'], $total_passengers);
-        
+
         if ($callback_query_id) {
             answerCallbackQuery($callback_query_id, "✅ غذا برای مسافر " . ($passenger_index + 1) . " ثبت شد");
         }
-        
+
         // ارسال پیام تأیید به کاربر
         sendMessage($chat_id, "✅ غذا برای مسافر " . ($passenger_index + 1) . " ثبت شد");
-        
+
         // نمایش منوی غذا برای مسافر بعدی
         return showFoodSelectionForPassenger($chat_id, $travelers[$next_index], $foodOptions, $next_index);
     } else {
@@ -2033,30 +2081,31 @@ function completeReservation($chat_id)
     $session = getReservationSession($chat_id);
     $user = getPrivateInfo($chat_id);
     $travelers = getTravelersWithFood($chat_id, $session['list_id']);
-    
+
     $result = makeReservation($session['ticket_id'], $travelers, $user);
-    
+
     $keyboard = [
         [
             ['text' => 'پرداخت و تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/confirm/' . $result['rsid']]
         ]
     ];
-    
+
     $replyMarkup = ['inline_keyboard' => $keyboard];
-    
+
     if ($result['status'] === 'success') {
-        $message = "✅ اطلاعات با موفقیت ثبت شد!\n"
-            . "جهت هدایت به درگاه و پرداخت هزینه، روی گزینه‌ی زیر کلیک کنید:\n"
-            . "عدم پرداخت هزینه به منزله‌ی انصراف از تهیه‌ی بلیط خواهد بود.";
+        $message = "خب خب خب ...\n"
+            . "خدا رو شکر تونستیم اطلاعات شما رو ثبت کنیم 🤲😊\n"
+            . "حالا کافیه برای پرداخت هزینه‌ی بلیط و نهایی شدن خرید، از گزینه‌ی پایین این پیام استفاده کنین 👇\n"
+            ."دقت کنین که تا پرداخت نشه، بلیطی به نام شما صادر نمی‌شه 🙈";
     } else {
-        $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
+        $message = "ای وای! نتونستیم اطلاعاتتون رو \n"
             . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
     }
-    
+
     // پاک کردن اطلاعات موقت و سشن
     clearTemporaryFoodSelections($chat_id, $session['list_id']);
     clearReservationSession($chat_id);
-    
+
     return sendMessage($chat_id, $message, $replyMarkup);
 }
 
