@@ -245,7 +245,7 @@ function registerUser($chat_id, $username)
     ];
 
     // Send the message to the admin with the inline button
-    sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard);
+    sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard, false);
 }
 
 function isUserApproved($chat_id)
@@ -398,13 +398,14 @@ function toEnglishNumbers($string)
 }
 
 
-function sendMessage($chat_id, $text, $replyMarkup = null)
+function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true)
 {
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/sendMessage";
 
-    // تبدیل اعداد انگلیسی به فارسی
-    $text = toPersianNumbers($text);
+    if($isPersian){
+        $text = toPersianNumbers($text);
+    }
 
     $postData = [
         'chat_id' => $chat_id,
