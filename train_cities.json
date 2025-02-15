@@ -90,34 +90,9 @@
         "text": "هشتگرد"
     },
     {
-        "id": 90016,
-        "code": "abnil",
-        "text": "آب نیل"
-    },
-    {
-        "id": 337,
-        "code": "abadeh",
-        "text": "آباده"
-    },
-    {
-        "id": 4,
-        "code": "abgarm",
-        "text": "آبگرم"
-    },
-    {
         "id": 7,
         "code": "abyek",
         "text": "آبیک"
-    },
-    {
-        "id": 224,
-        "code": "azadvar",
-        "text": "آزادور"
-    },
-    {
-        "id": 9,
-        "code": "atashbag",
-        "text": "آتش بغ"
     },
     {
         "id": 14,
@@ -130,49 +105,14 @@
         "text": "اردکان"
     },
     {
-        "id": 510,
-        "code": "arsanjan",
-        "text": "ارسنجان"
-    },
-    {
-        "id": 18,
-        "code": "azna",
-        "text": "ازنا"
-    },
-    {
-        "id": 301,
-        "code": "eslmshar",
-        "text": "اسلامشهر"
-    },
-    {
-        "id": 387,
-        "code": "eghlid",
-        "text": "اقلید"
-    },
-    {
-        "id": 51,
-        "code": "alvand",
-        "text": "الوند"
-    },
-    {
         "id": 24,
         "code": "andmeshk",
         "text": "اندیمشک"
     },
     {
-        "id": 28,
-        "code": "badrud",
-        "text": "بادرود"
-    },
-    {
         "id": 30,
         "code": "bafgh",
         "text": "بافق"
-    },
-    {
-        "id": 383,
-        "code": "bjstan",
-        "text": "بجستان"
     },
     {
         "id": 299,
@@ -188,11 +128,6 @@
         "id": 226,
         "code": "bhabad",
         "text": "بهاباد"
-    },
-    {
-        "id": 44,
-        "code": "bishe",
-        "text": "بیشه"
     },
     {
         "id": 401,
@@ -220,34 +155,9 @@
         "text": "جلفا"
     },
     {
-        "id": 351,
-        "code": "jmkrn",
-        "text": "جمکران"
-    },
-    {
-        "id": 62,
-        "code": "jovin",
-        "text": "جوین"
-    },
-    {
-        "id": 66,
-        "code": "chamsngr",
-        "text": "چمسنگر"
-    },
-    {
         "id": 69,
         "code": "khorasan",
         "text": "خراسانک"
-    },
-    {
-        "id": 70,
-        "code": "khormpey",
-        "text": "خرم پی"
-    },
-    {
-        "id": 71,
-        "code": "khoramdr",
-        "text": "خرم دره"
     },
     {
         "id": 72,
@@ -265,16 +175,6 @@
         "text": "دامغان"
     },
     {
-        "id": 78,
-        "code": "dorud",
-        "text": "دورود"
-    },
-    {
-        "id": 285,
-        "code": "razi",
-        "text": "رازی"
-    },
-    {
         "id": 92,
         "code": "zarand",
         "text": "زرند"
@@ -283,11 +183,6 @@
         "id": 96,
         "code": "zarindsh",
         "text": "زرین دشت"
-    },
-    {
-        "id": 239,
-        "code": "zavre",
-        "text": "زواره"
     },
     {
         "id": 105,
@@ -303,11 +198,6 @@
         "id": 234,
         "code": "srkhs",
         "text": "سرخس"
-    },
-    {
-        "id": 257,
-        "code": "sadatshahr",
-        "text": "سعادت شهر"
     },
     {
         "id": 115,
@@ -330,11 +220,6 @@
         "text": "سیرجان"
     },
     {
-        "id": 128,
-        "code": "simindsh",
-        "text": "سیمین دشت"
-    },
-    {
         "id": 129,
         "code": "shazand",
         "text": "شازند"
@@ -343,11 +228,6 @@
         "id": 130,
         "code": "shahrud",
         "text": "شاهرود"
-    },
-    {
-        "id": 133,
-        "code": "shrfkhn",
-        "text": "شرفخانه"
     },
     {
         "id": 264,
@@ -370,11 +250,6 @@
         "text": "کرمانشاه"
     },
     {
-        "id": 90031,
-        "code": "safashahr",
-        "text": "صفا شهر"
-    },
-    {
         "id": 311,
         "code": "tabas",
         "text": "طبس"
@@ -395,26 +270,6 @@
         "text": "تربت حیدریه"
     },
     {
-        "id": 912,
-        "code": "tarbiatmoalem",
-        "text": "تربیت معلم"
-    },
-    {
-        "id": 59,
-        "code": "tanghaft",
-        "text": "تنگ هفت"
-    },
-    {
-        "id": 509,
-        "code": "fahraj",
-        "text": "فهرج"
-    },
-    {
-        "id": 154,
-        "code": "firuzkuh",
-        "text": "فیروزکوه"
-    },
-    {
         "id": 156,
         "code": "ghaemshr",
         "text": "قائمشهر"
@@ -433,21 +288,6 @@
         "id": 176,
         "code": "garmsar",
         "text": "گرمسار"
-    },
-    {
-        "id": 302,
-        "code": "mhshr",
-        "text": "ماهشهر"
-    },
-    {
-        "id": 249,
-        "code": "mhmadie",
-        "text": "محمدیه"
-    },
-    {
-        "id": 189,
-        "code": "marageh",
-        "text": "مراغه"
     },
     {
         "id": 256,
@@ -480,11 +320,6 @@
         "text": "میبد"
     },
     {
-        "id": 202,
-        "code": "negab",
-        "text": "نقاب"
-    },
-    {
         "id": 206,
         "code": "neyshabr",
         "text": "نیشابور"
@@ -505,44 +340,14 @@
         "text": "ورسک"
     },
     {
-        "id": 670,
-        "code": "abnil",
-        "text": "آب نیل"
-    },
-    {
         "id": 448,
         "code": "oromieh",
         "text": "ارومیه"
     },
     {
-        "id": 20,
-        "code": "SFRYEN",
-        "text": "اسفراین"
-    },
-    {
-        "id": 22,
-        "code": "AMRAVAN",
-        "text": "امروان"
-    },
-    {
-        "id": 43,
-        "code": "BIABANAK",
-        "text": "بیابانک"
-    },
-    {
-        "id": 373,
-        "code": "ZADMHMOD",
-        "text": "زادمحمود"
-    },
-    {
         "id": 65,
         "code": "SAVEH",
         "text": "ساوه"
-    },
-    {
-        "id": 83,
-        "code": "SRBNDR",
-        "text": "سربندر"
     },
     {
         "id": 511,
@@ -560,21 +365,6 @@
         "text": "شیرگاه"
     },
     {
-        "id": 258,
-        "code": "",
-        "text": "صفاشهر"
-    },
-    {
-        "id": 148,
-        "code": "AJABSHIR",
-        "text": "عجب شیر"
-    },
-    {
-        "id": 40,
-        "code": "firozan",
-        "text": "فیروزان"
-    },
-    {
         "id": 86,
         "code": "mehran",
         "text": "مهران"
@@ -585,44 +375,9 @@
         "text": "وان"
     },
     {
-        "id": 450,
-        "code": "inchehbron",
-        "text": "اینچه برون"
-    },
-    {
         "id": 451,
         "code": "rasht",
         "text": "رشت"
-    },
-    {
-        "id": 449,
-        "code": "tajrak",
-        "text": "تجرک"
-    },
-    {
-        "id": 34,
-        "code": "BAKRAN",
-        "text": "بکران"
-    },
-    {
-        "id": 290,
-        "code": "ankara",
-        "text": "آنكارا"
-    },
-    {
-        "id": 237,
-        "code": "eshkzar",
-        "text": "اشكذر"
-    },
-    {
-        "id": 201,
-        "code": "nazarabd\n",
-        "text": "اشکذر"
-    },
-    {
-        "id": 76,
-        "code": "bostanabad",
-        "text": "بستان آباد"
     },
     {
         "id": 513,
@@ -630,24 +385,9 @@
         "text": "خاش"
     },
     {
-        "id": 143,
-        "code": "khavaran",
-        "text": "خاوران(تبريز)"
-    },
-    {
         "id": 344,
         "code": "robatkarim",
         "text": "رباط كريم"
-    },
-    {
-        "id": 48,
-        "code": "saravan",
-        "text": "سراوان"
-    },
-    {
-        "id": 120,
-        "code": "sankhast",
-        "text": "سنخواست"
     },
     {
         "id": 300,
@@ -660,43 +400,8 @@
         "text": "سوادكوه"
     },
     {
-        "id": 262,
-        "code": "naghadeh",
-        "text": "نقده"
-    },
-    {
-        "id": 203,
-        "code": "neka",
-        "text": "نكا"
-    },
-    {
         "id": 213,
         "code": "harand",
         "text": "هرند"
-    },
-    {
-        "id": 211,
-        "code": "varzaneh",
-        "text": "ورزنه"
-    },
-    {
-        "id": 512,
-        "code": "karbala",
-        "text": "کربلا"
-    },
-    {
-        "id": 362,
-        "code": "khatunab",
-        "text": "خاتون آباد"
-    },
-    {
-        "id": 260,
-        "code": "babakamal",
-        "text": "بابا كمال"
-    },
-    {
-        "id": 50088,
-        "code": "jmkrn",
-        "text": "جمكران"
     }
 ]
