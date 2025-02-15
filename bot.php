@@ -2454,12 +2454,8 @@ function handleInlineQuery($inlineQuery)
     $query = strtolower($inlineQuery['query']);
     $queryId = $inlineQuery['id'];
    
-    $available_routes = [
-        'tehran-mashhad' => 'تهران به مشهد',
-        'mashhad-tehran' => 'مشهد به تهران',
-        'tehran-shiraz' => 'تهران به شیراز',
-        'shiraz-tehran' => 'شیراز به تهران',
-    ];
+    // دریافت مسیرها از فایل JSON (به فرض نام فایل شما train_cities.json است)
+    $available_routes = getAvailableRoutesFromJson('train_cities.json');
    
     $results = [];
    
@@ -2468,7 +2464,7 @@ function handleInlineQuery($inlineQuery)
             stripos($route_key, $query) !== false ||
             stripos($route_name, $query) !== false) {
            
-            // تغییر پیام به فرمت دستور
+            // در اینجا پیام ارسالی شامل کد مسیر (مثلاً tehran-ahvaz) است.
             $command_text = $route_key;
             
             $results[] = [
@@ -2485,12 +2481,63 @@ function handleInlineQuery($inlineQuery)
    
     $data = [
         'inline_query_id' => $queryId,
-        'results' => json_encode($results),
-        'cache_time' => 300
+        'results'         => json_encode($results),
+        'cache_time'      => 5000
     ];
+    
     $botToken = $GLOBALS['botToken'];
-    $url = "https://api.telegram.org/bot$botToken";
-    file_get_contents($url . "/answerInlineQuery?" . http_build_query($data));
+    $url = "https://api.telegram.org/bot$botToken/answerInlineQuery";
+    
+    // استفاده از cURL برای ارسال درخواست به صورت POST
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+    
+    $response = curl_exec($ch);
+    if (curl_errno($ch)) {
+        error_log("cURL error: " . curl_error($ch));
+    }
+    curl_close($ch);
+    
+    return $response;
 }
+
+
+function getAvailableRoutesFromJson($jsonPath) {
+    // خواندن محتویات فایل JSON
+    $jsonContent = file_get_contents($jsonPath);
+    
+    // اگر فایل شامل "var train_cities =" هست، اون قسمت رو حذف می‌کنیم
+    if (strpos($jsonContent, 'var train_cities =') !== false) {
+        $jsonContent = str_replace('var train_cities =', '', $jsonContent);
+    }
+    // حذف فاصله‌ها و سمیکالن انتهایی در صورت وجود
+    $jsonContent = trim($jsonContent, " \t\n\r\0\x0B;");
+    $jsonContent = rtrim($jsonContent, ';');
+    
+    // تبدیل محتویات به آرایه
+    $cities = json_decode($jsonContent, true);
+    if (!$cities) {
+        // در صورت بروز خطا در تبدیل JSON، می‌توان لاگ یا خطا داد
+        return [];
+    }
+    
+    $routes = [];
+    // ایجاد مسیرها به صورت داینامیک (هر ترکیب دو شهر)
+    foreach ($cities as $from) {
+        foreach ($cities as $to) {
+            if ($from['code'] !== $to['code']) {
+                // کد مسیر به صورت "from-to"
+                $routeKey = $from['code'] . '-' . $to['code'];
+                // عنوان مسیر با استفاده از نام‌های نمایشی (text)
+                $routeName = $from['text'] . ' به ' . $to['text'];
+                $routes[$routeKey] = $routeName;
+            }
+        }
+    }
+    return $routes;
+}
+
 
 ?>
