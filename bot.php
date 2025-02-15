@@ -960,11 +960,14 @@ function handleSetTripCommand($chat_id)
 {
     $inlineKeyboard = [
         'inline_keyboard' => [
-            [
-                // این دکمه حالت اینلاین رو در همین چت باز می‌کنه.
-                ['text' => 'جستجو مسیر', 'switch_inline_query_current_chat' => '']
-            ]
-        ]
+    [
+        // دکمه ثبت مسیر (با callback_data)
+        ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
+        // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
+        ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
+    ]
+]
+
     ];
     setUserState($chat_id, 'SET_TRIP_ROUTE');
     sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
