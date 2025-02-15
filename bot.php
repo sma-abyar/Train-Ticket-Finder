@@ -85,68 +85,79 @@ function initDatabase()
 {
     global $dbPath;
     $db = new SQLite3($dbPath);
-    $db->exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, chat_id TEXT UNIQUE, approved INTEGER DEFAULT 0)");
+    
+    // تنظیم زمان انتظار برای آزاد شدن قفل (مثلاً ۵۰۰۰ میلی‌ثانیه یا ۵ ثانیه)
+    $db->busyTimeout(5000);
+    
+    // فعال کردن WAL mode برای بهبود مدیریت قفل‌ها
+    $db->exec('PRAGMA journal_mode = WAL;');
+    
+    $db->exec("CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY, 
+        chat_id TEXT UNIQUE, 
+        approved INTEGER DEFAULT 0
+    )");
+    
     $db->exec("CREATE TABLE IF NOT EXISTS user_trips (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, -- id for trips
-    chat_id TEXT NOT NULL, -- id for users
-    route TEXT NOT NULL, -- route
-    date TEXT NOT NULL, -- date
-    return_date TEXT, -- return date
-    count INTEGER NOT NULL, -- ticket count
-    type INTEGER, -- type of chair (normal/men/women)
-    coupe INTEGER, -- buy a coupe
-    filter INTEGER, -- filters
-    no_counting_notif INTEGER, -- error of no capacity
-    no_ticket_notif INTEGER, -- error of no train
-    bad_data_notif INTEGER -- error of data
-)");
-    // جدول مسافران
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        route TEXT NOT NULL,
+        date TEXT NOT NULL,
+        return_date TEXT,
+        count INTEGER NOT NULL,
+        type INTEGER,
+        coupe INTEGER,
+        filter INTEGER,
+        no_counting_notif INTEGER,
+        no_ticket_notif INTEGER,
+        bad_data_notif INTEGER
+    )");
+    
     $db->exec("CREATE TABLE IF NOT EXISTS travelers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id TEXT NOT NULL,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    national_code TEXT NOT NULL,
-    passenger_type INTEGER NOT NULL, -- 1: بزرگسال، 2: کودک، 3: نوزاد
-    gender INTEGER NOT NULL, -- 1: آقا، 2: خانم
-    services TEXT, -- JSON array of services
-    wheelchair INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)");
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        national_code TEXT NOT NULL,
+        passenger_type INTEGER NOT NULL,
+        gender INTEGER NOT NULL,
+        services TEXT,
+        wheelchair INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 
-    // جدول لیست‌های مسافران
     $db->exec("CREATE TABLE IF NOT EXISTS traveler_lists (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    members TEXT DEFAULT '[]', -- JSON array of traveler IDs
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)");
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        members TEXT DEFAULT '[]',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
 
-    // جدول لیست اطلاعات شخصی
     $db->exec("CREATE TABLE IF NOT EXISTS private_info (
-    chat_id TEXT NOT NULL,
-    person_name TEXT NOT NULL,
-    phone_number INTEGER NOT NULL,
-    email TEXT
+        chat_id TEXT NOT NULL,
+        person_name TEXT NOT NULL,
+        phone_number INTEGER NOT NULL,
+        email TEXT
     )");
 
     $db->exec("CREATE TABLE IF NOT EXISTS reservation_sessions (
-    chat_id TEXT PRIMARY KEY,
-    session_data TEXT,
-    created_at DATETIME,
-    UNIQUE(chat_id)
-)");
+        chat_id TEXT PRIMARY KEY,
+        session_data TEXT,
+        created_at DATETIME,
+        UNIQUE(chat_id)
+    )");
 
-    // Add user_states table
     $db->exec("CREATE TABLE IF NOT EXISTS user_states (
-    chat_id TEXT PRIMARY KEY,
-    current_state TEXT NOT NULL,
-    temp_data TEXT,  -- JSON string for temporary data
-    last_update DATETIME DEFAULT CURRENT_TIMESTAMP
-)");
+        chat_id TEXT PRIMARY KEY,
+        current_state TEXT NOT NULL,
+        temp_data TEXT,
+        last_update DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+    
     return $db;
 }
+
 
 function setUserState($chat_id, $state, $temp_data = null)
 {
