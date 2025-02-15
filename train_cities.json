@@ -85,29 +85,9 @@
         "text": "همدان"
     },
     {
-        "id": 215,
-        "code": "hashtger",
-        "text": "هشتگرد"
-    },
-    {
-        "id": 7,
-        "code": "abyek",
-        "text": "آبیک"
-    },
-    {
         "id": 14,
         "code": "arak",
         "text": "اراک"
-    },
-    {
-        "id": 261,
-        "code": "ardkan",
-        "text": "اردکان"
-    },
-    {
-        "id": 24,
-        "code": "andmeshk",
-        "text": "اندیمشک"
     },
     {
         "id": 30,
@@ -120,44 +100,9 @@
         "text": "بم"
     },
     {
-        "id": 36,
-        "code": "bndtrkmn",
-        "text": "بندرترکمن"
-    },
-    {
-        "id": 226,
-        "code": "bhabad",
-        "text": "بهاباد"
-    },
-    {
         "id": 401,
         "code": "parand",
         "text": "پرند"
-    },
-    {
-        "id": 50,
-        "code": "polsefid",
-        "text": "پل سفید"
-    },
-    {
-        "id": 53,
-        "code": "pishva",
-        "text": "پیشوا"
-    },
-    {
-        "id": 61,
-        "code": "jajarm",
-        "text": "جاجرم"
-    },
-    {
-        "id": 221,
-        "code": "jolfa",
-        "text": "جلفا"
-    },
-    {
-        "id": 69,
-        "code": "khorasan",
-        "text": "خراسانک"
     },
     {
         "id": 72,
@@ -165,44 +110,9 @@
         "text": "خرمشهر"
     },
     {
-        "id": 369,
-        "code": "khaf",
-        "text": "خواف"
-    },
-    {
-        "id": 75,
-        "code": "damghan",
-        "text": "دامغان"
-    },
-    {
-        "id": 92,
-        "code": "zarand",
-        "text": "زرند"
-    },
-    {
-        "id": 96,
-        "code": "zarindsh",
-        "text": "زرین دشت"
-    },
-    {
         "id": 105,
         "code": "sabzevar",
         "text": "سبزوار"
-    },
-    {
-        "id": 106,
-        "code": "sepidash",
-        "text": "سپیددشت"
-    },
-    {
-        "id": 234,
-        "code": "srkhs",
-        "text": "سرخس"
-    },
-    {
-        "id": 115,
-        "code": "solmas",
-        "text": "سلماس"
     },
     {
         "id": 116,
@@ -210,39 +120,9 @@
         "text": "سمنان"
     },
     {
-        "id": 123,
-        "code": "sahand",
-        "text": "سهند"
-    },
-    {
-        "id": 125,
-        "code": "sirjan",
-        "text": "سیرجان"
-    },
-    {
-        "id": 129,
-        "code": "shazand",
-        "text": "شازند"
-    },
-    {
         "id": 130,
         "code": "shahrud",
         "text": "شاهرود"
-    },
-    {
-        "id": 264,
-        "code": "shahrreza",
-        "text": "شهرضا"
-    },
-    {
-        "id": 135,
-        "code": "shoush",
-        "text": "شوش"
-    },
-    {
-        "id": 134,
-        "code": "shoshtar",
-        "text": "شوشتر"
     },
     {
         "id": 195,
@@ -250,94 +130,14 @@
         "text": "کرمانشاه"
     },
     {
-        "id": 311,
-        "code": "tabas",
-        "text": "طبس"
-    },
-    {
-        "id": 54,
-        "code": "takestan",
-        "text": "تاکستان"
-    },
-    {
-        "id": 56,
-        "code": "tapesfid",
-        "text": "تپه سفید"
-    },
-    {
-        "id": 251,
-        "code": "trbthdr",
-        "text": "تربت حیدریه"
-    },
-    {
-        "id": 156,
-        "code": "ghaemshr",
-        "text": "قائمشهر"
-    },
-    {
-        "id": 403,
-        "code": "karun",
-        "text": "کارون"
-    },
-    {
         "id": 162,
         "code": "kashan",
         "text": "کاشان"
     },
     {
-        "id": 176,
-        "code": "garmsar",
-        "text": "گرمسار"
-    },
-    {
-        "id": 256,
-        "code": "marvdasht",
-        "text": "مرودشت"
-    },
-    {
-        "id": 15,
-        "code": "malayer",
-        "text": "ملایر"
-    },
-    {
-        "id": 194,
-        "code": "mahabad",
-        "text": "مهاباد"
-    },
-    {
-        "id": 250,
-        "code": "miandoab",
-        "text": "میاندوآب"
-    },
-    {
-        "id": 197,
-        "code": "mianeh",
-        "text": "میانه"
-    },
-    {
-        "id": 198,
-        "code": "meybod",
-        "text": "میبد"
-    },
-    {
         "id": 206,
         "code": "neyshabr",
         "text": "نیشابور"
-    },
-    {
-        "id": 216,
-        "code": "haftape",
-        "text": "هفت تپه"
-    },
-    {
-        "id": 209,
-        "code": "varamin",
-        "text": "ورامین"
-    },
-    {
-        "id": 212,
-        "code": "veresk",
-        "text": "ورسک"
     },
     {
         "id": 448,
@@ -360,11 +160,6 @@
         "text": "شهرکرد"
     },
     {
-        "id": 144,
-        "code": "SHIRGAH",
-        "text": "شیرگاه"
-    },
-    {
         "id": 86,
         "code": "mehran",
         "text": "مهران"
@@ -380,28 +175,8 @@
         "text": "رشت"
     },
     {
-        "id": 513,
-        "code": "khash",
-        "text": "خاش"
-    },
-    {
-        "id": 344,
-        "code": "robatkarim",
-        "text": "رباط كريم"
-    },
-    {
         "id": 300,
         "code": "sanandaj",
         "text": "سنندج"
-    },
-    {
-        "id": 121,
-        "code": "savadkuh",
-        "text": "سوادكوه"
-    },
-    {
-        "id": 213,
-        "code": "harand",
-        "text": "هرند"
     }
 ]
