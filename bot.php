@@ -454,7 +454,10 @@ function getUsernameFromMessage($message)
 
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
-if (isset($update['callback_query'])) {
+if (isset($update['inline_query'])) {
+    handleInlineQuery($update['inline_query']);
+    exit;
+} elseif (isset($update['callback_query'])) {
     handleCallbackQuery($update['callback_query']);
 } elseif (isset($update['message'])) {
     $chat_id = $update['message']['chat']['id'];
@@ -465,6 +468,11 @@ if (isset($update['callback_query'])) {
         clearUserState($chat_id);
         sendMessage($chat_id, "عملیات لغو شد.", getMainMenuKeyboard());
         return;
+    } // چک کردن دستور settrip_route
+    if (strpos($text, '/settrip_route_') === 0) {
+        $route = str_replace('/settrip_route_', '', $text);
+        handleSetTripRoute($chat_id, $route);
+        exit;
     }
 
     // Handle new commands and cancel current state if needed
@@ -885,7 +893,11 @@ function handleCallbackQuery($callback_query)
         startAddingPrivateInfo($chat_id);
     } elseif ($data === "edit_private_info") {
         startAddingPrivateInfo($chat_id);
-    } else {
+    } elseif (strpos($data, 'trip_route_') === 0) {
+        $trip_route = str_replace('trip_route_', '', $data);
+        handleSetTripRoute($chat_id, $trip_route);
+    }
+     else {
         // اگر callback ناشناخته بود
         answerCallbackQuery($callback_query['id'], "درخواست نامعتبر!");
     }
@@ -946,9 +958,18 @@ function handleHelpCommand($chat_id)
 
 function handleSetTripCommand($chat_id)
 {
+    $inlineKeyboard = [
+        'inline_keyboard' => [
+            [
+                // این دکمه حالت اینلاین رو در همین چت باز می‌کنه.
+                ['text' => 'جستجو مسیر', 'switch_inline_query_current_chat' => '']
+            ]
+        ]
+    ];
     setUserState($chat_id, 'SET_TRIP_ROUTE');
-    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):");
+    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
 }
+
 
 function handleShowTripsCommand($chat_id)
 {
@@ -2412,6 +2433,50 @@ function getPrivateInfo($chat_id)
         'email' => isset($userData['email']) ? $userData['email'] : '',
         'mobileNumber' => isset($userData['phone_number']) ? $userData['phone_number'] : ''
     ];
+}
+
+function handleInlineQuery($inlineQuery)
+{
+    $query = strtolower($inlineQuery['query']);
+    $queryId = $inlineQuery['id'];
+   
+    $available_routes = [
+        'tehran-mashhad' => 'تهران به مشهد',
+        'mashhad-tehran' => 'مشهد به تهران',
+        'tehran-shiraz' => 'تهران به شیراز',
+        'shiraz-tehran' => 'شیراز به تهران',
+    ];
+   
+    $results = [];
+   
+    foreach ($available_routes as $route_key => $route_name) {
+        if (empty($query) ||
+            stripos($route_key, $query) !== false ||
+            stripos($route_name, $query) !== false) {
+           
+            // تغییر پیام به فرمت دستور
+            $command_text = $route_key;
+            
+            $results[] = [
+                'type' => 'article',
+                'id' => uniqid(),
+                'title' => $route_name,
+                'description' => "کد مسیر: $route_key",
+                'input_message_content' => [
+                    'message_text' => $command_text
+                ]
+            ];
+        }
+    }
+   
+    $data = [
+        'inline_query_id' => $queryId,
+        'results' => json_encode($results),
+        'cache_time' => 300
+    ];
+    $botToken = $GLOBALS['botToken'];
+    $url = "https://api.telegram.org/bot$botToken";
+    file_get_contents($url . "/answerInlineQuery?" . http_build_query($data));
 }
 
 ?>
