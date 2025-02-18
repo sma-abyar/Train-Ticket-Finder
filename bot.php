@@ -85,19 +85,19 @@ function initDatabase()
 {
     global $dbPath;
     $db = new SQLite3($dbPath);
-    
+
     // تنظیم زمان انتظار برای آزاد شدن قفل (مثلاً ۵۰۰۰ میلی‌ثانیه یا ۵ ثانیه)
     $db->busyTimeout(5000);
-    
+
     // فعال کردن WAL mode برای بهبود مدیریت قفل‌ها
     $db->exec('PRAGMA journal_mode = WAL;');
-    
+
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, 
         chat_id TEXT UNIQUE, 
         approved INTEGER DEFAULT 0
     )");
-    
+
     $db->exec("CREATE TABLE IF NOT EXISTS user_trips (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id TEXT NOT NULL,
@@ -112,7 +112,7 @@ function initDatabase()
         no_ticket_notif INTEGER,
         bad_data_notif INTEGER
     )");
-    
+
     $db->exec("CREATE TABLE IF NOT EXISTS travelers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id TEXT NOT NULL,
@@ -154,7 +154,7 @@ function initDatabase()
         temp_data TEXT,
         last_update DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
-    
+
     return $db;
 }
 
@@ -366,28 +366,45 @@ function fetchTickets($userTrip)
 
                     // ارسال پیام با دکمه‌های جدید
                     sendMessage($userTrip['chat_id'], $messageData['message'], $messageData['reply_markup']);
+
+                    updateNotificationStatus($userTrip['id'], 'no_counting_notif', 0);
+                    updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 0);
+                    updateNotificationStatus($userTrip['id'], 'bad_data_notif', 0);
                 }
             }
             if (!$found && ($userTrip['no_counting_notif'] == 0)) {
-                sendMessage($userTrip['chat_id'], "*دیر رسیدی خوشگله!*\nهیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$route_title} صندلی خالی نداره.\n حالا توکل به خدا، صبر کن شاید موجود شد😊😉");
-                updateNotificationStatus($userTrip['id'], 'no_counting_notif');
+                sendMessage($userTrip['chat_id'], "*دیر رسیدی خوشگله!*\nهیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$route_title} صندلی خالی نداره.\n حالا توکل به خدا، صبر کن شاید موجود شد. خبر از ما😊😉");
+                updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
             }
         } elseif ($userTrip['no_ticket_notif'] == 0) {
             sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$userTrip['route']} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎");
-            updateNotificationStatus($userTrip['id'], 'no_ticket_notif');
+            updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
         }
     } elseif ($userTrip['bad_data_notif'] == 0) {
-        updateNotificationStatus($userTrip['id'], 'bad_data_notif');
-    } else {
-        sendMessage($userTrip['chat_id'], "خیلی اوضاع خیطه 😬 \nبه ادمین یه ندا بده ❤");
+        // چاپ اطلاعات دریافتی از سرور
+        $debug_info = "Debug Info:\n" .
+                     "Response: " . print_r(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), true) . "\n" .
+                     "Trip Info: " . print_r($userTrip, true);
+        
+        // ارسال پیام خطا به کاربر
+        sendMessage($userTrip['chat_id'], "بابا جون من یه مقدار چشمام ضعیفه 👨🏻‍🦳، قطاری توی تاریخ {$userTrip['date']} پیدا نکردم. \nبذار برم عینکمو بیارم، هر وقت چیزی به چشمم خورد خبرت می‌کنم 🧐");
+        
+        // ارسال اطلاعات خطا به لاگ یا ادمین (یا خود کاربر اگر مایل هستید)
+        file_put_contents('debug.log', "Received info: " . $debug_info . "\n", FILE_APPEND);
+        
+        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
     }
+    // else if ($userTrip['critical_notif'] == 0) {  // اضافه کردن یک فیلد جدید برای این وضعیت
+    //     sendMessage($userTrip['chat_id'], "خیلی اوضاع خیطه 😬 \nبه ادمین یه ندا بده ❤");
+    //     updateNotificationStatus($userTrip['id'], 'critical_notif', 1);
+    // }
 }
 
 // update notif state of each tripz
-function updateNotificationStatus($userTripId, $field)
+function updateNotificationStatus($userTripId, $field, $data)
 {
     $db = initDatabase();
-    $stmt = $db->prepare("UPDATE user_trips SET $field = 1 WHERE id = :id");
+    $stmt = $db->prepare("UPDATE user_trips SET $field = $data WHERE id = :id");
     $stmt->bindValue(':id', $userTripId, SQLITE3_INTEGER);
     $stmt->execute();
 }
@@ -414,7 +431,7 @@ function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true)
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/sendMessage";
 
-    if($isPersian){
+    if ($isPersian) {
         $text = toPersianNumbers($text);
     }
 
@@ -757,7 +774,7 @@ function handleCallbackQuery($callback_query)
     $chat_id = $callback_query['message']['chat']['id'];
     $data = $callback_query['data'];
     $message_id = $callback_query['message']['message_id'];
-    file_put_contents('debug.log', "Callback Query received: " . print_r($callback_query, true) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Callback Query received: " . print_r($callback_query, true) . "\n", FILE_APPEND);
 
     if ($data === 'add_traveler') {
         // Start the traveler addition process
@@ -810,7 +827,7 @@ function handleCallbackQuery($callback_query)
         // Call the function to remove the traveler list
         removeTravelerList($chat_id, $list_id);
         // Notify the user
-        sendMessage($chat_id, "لیست مسافران با موفقیت حذف شد.");
+        // sendMessage($chat_id, "لیست مسافران با موفقیت حذف شد.");
     } elseif (strpos($data, 'approve_user_') === 0) {
         // Extract the chat_id from the callback data
         $user_chat_id = str_replace('approve_user_', '', $data);
@@ -893,7 +910,7 @@ function handleCallbackQuery($callback_query)
         handleSetTravelerWheelchair($chat_id, $wheelchair);
     } elseif (strpos($data, 'reserve_list_') === 0) {
         // اضافه کردن لاگ
-        file_put_contents('debug.log', "Received callback: " . $data . "\n", FILE_APPEND);
+        // file_put_contents('debug.log', "Received callback: " . $data . "\n", FILE_APPEND);
         handleListReservation($data, $chat_id);
     } elseif (strpos($data, 'food_') === 0) {
         // مدیریت انتخاب غذا
@@ -907,8 +924,7 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'trip_route_') === 0) {
         $trip_route = str_replace('trip_route_', '', $data);
         handleSetTripRoute($chat_id, $trip_route);
-    }
-     else {
+    } else {
         // اگر callback ناشناخته بود
         answerCallbackQuery($callback_query['id'], "درخواست نامعتبر!");
     }
@@ -971,13 +987,13 @@ function handleSetTripCommand($chat_id)
 {
     $inlineKeyboard = [
         'inline_keyboard' => [
-    [
-        // دکمه ثبت مسیر (با callback_data)
-        ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
-        // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
-        ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
-    ]
-]
+            [
+                // دکمه ثبت مسیر (با callback_data)
+                ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
+                // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
+                ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
+            ]
+        ]
 
     ];
     setUserState($chat_id, 'SET_TRIP_ROUTE');
@@ -1883,7 +1899,7 @@ function getTravelersFromList($list_id, $chat_id)
 function getFoodOptions($ticketId, $passengerCount)
 {
     $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0/{$passengerCount}-0-0/0";
-    file_put_contents('debug.log', "Requesting URL: $url\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Requesting URL: $url\n", FILE_APPEND);
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -1898,7 +1914,7 @@ function getFoodOptions($ticketId, $passengerCount)
     $error = curl_error($ch);
     curl_close($ch);
 
-    file_put_contents('debug.log', "HTTP Code: $httpCode\n", FILE_APPEND);
+    // file_put_contents('debug.log', "HTTP Code: $httpCode\n", FILE_APPEND);
     if ($error) {
         file_put_contents('debug.log', "CURL Error: $error\n", FILE_APPEND);
     }
@@ -1909,12 +1925,12 @@ function getFoodOptions($ticketId, $passengerCount)
     }
 
     // لاگ کردن پاسخ برای بررسی
-    file_put_contents('debug.log', "Response sample: " . substr($response, 0, 500) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Response sample: " . substr($response, 0, 500) . "\n", FILE_APPEND);
 
     // استخراج گزینه‌های غذا
     preg_match_all('/<option[^>]*value="(\d+)"[^>]*>\s*([^<]+?)\s*<\/option>/u', $response, $matches);
 
-    file_put_contents('debug.log', "Matches found: " . json_encode($matches, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Matches found: " . json_encode($matches, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
 
     $foodOptions = [];
     if (!empty($matches[1]) && !empty($matches[2])) {
@@ -1926,7 +1942,7 @@ function getFoodOptions($ticketId, $passengerCount)
         }
     }
 
-    file_put_contents('debug.log', "Final food options: " . json_encode($foodOptions, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Final food options: " . json_encode($foodOptions, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
     return $foodOptions;
 }
 
@@ -2015,7 +2031,7 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 // تابع اصلی برای شروع فرآیند رزرو با لیست
 function handleListReservation($callback_data, $chat_id)
 {
-    file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
 
     // استخراج شناسه لیست و بلیط
     $parts = explode('_', $callback_data);
@@ -2060,7 +2076,7 @@ function showFoodSelectionForPassenger($chat_id, $traveler, $foodOptions, $index
         $keyboard[] = [['text' => $food['title'], 'callback_data' => "select_food_{$index}_{$food['id']}"]];
     }
 
-    file_put_contents('debug.log', "Generated keyboard: " . print_r($keyboard, true) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Generated keyboard: " . print_r($keyboard, true) . "\n", FILE_APPEND);
 
     $message = "🍽 لطفاً غذای {$traveler['first_name']} {$traveler['last_name']} را انتخاب کنید:";
     return sendMessage($chat_id, $message, ['inline_keyboard' => $keyboard]);
@@ -2068,16 +2084,16 @@ function showFoodSelectionForPassenger($chat_id, $traveler, $foodOptions, $index
 // تابع مدیریت انتخاب غذا
 function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null)
 {
-    file_put_contents('debug.log', "Received callback_data in handleFoodSelection: " . print_r($callback_data, true) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Received callback_data in handleFoodSelection: " . print_r($callback_data, true) . "\n", FILE_APPEND);
 
     $parts = explode('_', $callback_data);
-    file_put_contents('debug.log', "Parts: " . print_r($parts, true) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Parts: " . print_r($parts, true) . "\n", FILE_APPEND);
 
     $passenger_index = $parts[2];
     $food_id = $parts[3];
 
     $session = getReservationSession($chat_id);
-    file_put_contents('debug.log', "Session data: " . print_r($session, true) . "\n", FILE_APPEND);
+    // file_put_contents('debug.log', "Session data: " . print_r($session, true) . "\n", FILE_APPEND);
 
     if (!$session) {
         sendMessage($chat_id, "⚠️ خطا: اطلاعات جلسه یافت نشد");
@@ -2132,7 +2148,7 @@ function completeReservation($chat_id)
         $message = "خب خب خب ...\n"
             . "خدا رو شکر تونستیم اطلاعات شما رو ثبت کنیم 🤲😊\n"
             . "حالا کافیه برای پرداخت هزینه‌ی بلیط و نهایی شدن خرید، از گزینه‌ی پایین این پیام استفاده کنین 👇\n"
-            ."دقت کنین که تا پرداخت نشه، بلیطی به نام شما صادر نمی‌شه 🙈";
+            . "دقت کنین که تا پرداخت نشه، بلیطی به نام شما صادر نمی‌شه 🙈";
     } else {
         $message = "ای وای! نتونستیم اطلاعاتتون رو \n"
             . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
@@ -2292,7 +2308,7 @@ function removeTravelerList($chat_id, $list_id)
     $result = $stmt->execute();
 
     if ($db->changes() > 0) {
-        sendMessage($chat_id, "لیست مسافران با شماره $list_id با موفقیت حذف شد.");
+        sendMessage($chat_id, "لیست مسافران با موفقیت حذف شد.");
     } else {
         sendMessage($chat_id, "لیستی با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
     }
@@ -2453,20 +2469,22 @@ function handleInlineQuery($inlineQuery)
 {
     $query = strtolower($inlineQuery['query']);
     $queryId = $inlineQuery['id'];
-   
+
     // دریافت مسیرها از فایل JSON (به فرض نام فایل شما train_cities.json است)
     $available_routes = getAvailableRoutesFromJson('train_cities.json');
-   
+
     $results = [];
-   
+
     foreach ($available_routes as $route_key => $route_name) {
-        if (empty($query) ||
+        if (
+            empty($query) ||
             stripos($route_key, $query) !== false ||
-            stripos($route_name, $query) !== false) {
-           
+            stripos($route_name, $query) !== false
+        ) {
+
             // در اینجا پیام ارسالی شامل کد مسیر (مثلاً tehran-ahvaz) است.
             $command_text = $route_key;
-            
+
             $results[] = [
                 'type' => 'article',
                 'id' => uniqid(),
@@ -2478,36 +2496,37 @@ function handleInlineQuery($inlineQuery)
             ];
         }
     }
-   
+
     $data = [
         'inline_query_id' => $queryId,
-        'results'         => json_encode($results),
-        'cache_time'      => 5000
+        'results' => json_encode($results),
+        'cache_time' => 5000
     ];
-    
+
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/answerInlineQuery";
-    
+
     // استفاده از cURL برای ارسال درخواست به صورت POST
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-    
+
     $response = curl_exec($ch);
     if (curl_errno($ch)) {
         error_log("cURL error: " . curl_error($ch));
     }
     curl_close($ch);
-    
+
     return $response;
 }
 
 
-function getAvailableRoutesFromJson($jsonPath) {
+function getAvailableRoutesFromJson($jsonPath)
+{
     // خواندن محتویات فایل JSON
     $jsonContent = file_get_contents($jsonPath);
-    
+
     // اگر فایل شامل "var train_cities =" هست، اون قسمت رو حذف می‌کنیم
     if (strpos($jsonContent, 'var train_cities =') !== false) {
         $jsonContent = str_replace('var train_cities =', '', $jsonContent);
@@ -2515,14 +2534,14 @@ function getAvailableRoutesFromJson($jsonPath) {
     // حذف فاصله‌ها و سمیکالن انتهایی در صورت وجود
     $jsonContent = trim($jsonContent, " \t\n\r\0\x0B;");
     $jsonContent = rtrim($jsonContent, ';');
-    
+
     // تبدیل محتویات به آرایه
     $cities = json_decode($jsonContent, true);
     if (!$cities) {
         // در صورت بروز خطا در تبدیل JSON، می‌توان لاگ یا خطا داد
         return [];
     }
-    
+
     $routes = [];
     // ایجاد مسیرها به صورت داینامیک (هر ترکیب دو شهر)
     foreach ($cities as $from) {
