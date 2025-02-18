@@ -1559,13 +1559,13 @@ function listTravelerLists($chat_id)
                 while ($member = $result2->fetchArray(SQLITE3_ASSOC)) {
                     $type_text = '';
                     switch ($member['passenger_type']) {
-                        case 1:
+                        case 0:
                             $type_text = 'بزرگسال';
                             break;
-                        case 2:
+                        case 1:
                             $type_text = 'کودک';
                             break;
-                        case 3:
+                        case 2:
                             $type_text = 'نوزاد';
                             break;
                     }
@@ -2242,11 +2242,11 @@ function editMessageText($chat_id, $message_id, $text, $reply_markup = null)
 function getPassengerTypeText($type)
 {
     switch ($type) {
-        case 1:
+        case 0:
             return "بزرگسال";
-        case 2:
+        case 1:
             return "کودک";
-        case 3:
+        case 2:
             return "نوزاد";
         default:
             return "نامشخص";
