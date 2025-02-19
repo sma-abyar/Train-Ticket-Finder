@@ -1947,7 +1947,7 @@ function getFoodOptions($ticketId, $passengerCount)
 }
 
 
-function makeReservation($ticketId, $passengers, $user)
+function makeReservation($ticketId, $passengers, $user, $coupe)
 {
     $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0";
 
@@ -1978,7 +1978,7 @@ function makeReservation($ticketId, $passengers, $user)
             'email' => $user['email'],
             'mobileNumber' => '0' . $user['mobileNumber']
         ],
-        'coupe' => 0,
+        'coupe' => $coupe,
         'safarmarketId' => ''
     ];
 
@@ -2015,7 +2015,7 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
         $keyboard[] = [
             [
                 'text' => "رزرو برای لیست {$list['name']} ({$member_count} نفر)",
-                'callback_data' => "reserve_list_{$list['id']}_{$ticket['id']}"
+                'callback_data' => "reserve_list_{$list['id']}_{$ticket['id']}_{$userTrip['coupe']}"
             ]
         ];
     }
@@ -2035,13 +2035,14 @@ function handleListReservation($callback_data, $chat_id)
 
     // استخراج شناسه لیست و بلیط
     $parts = explode('_', $callback_data);
-    if (count($parts) !== 4) {
+    if (count($parts) !== 5) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
         return "⚠️ خطا: فرمت داده نامعتبر است";
     }
 
     $list_id = $parts[2];
     $ticket_id = $parts[3];
+    $coupe_data = $parts[4];
 
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
@@ -2055,7 +2056,8 @@ function handleListReservation($callback_data, $chat_id)
         'list_id' => $list_id,
         'ticket_id' => $ticket_id,
         'current_passenger_index' => 0,
-        'total_passengers' => count($travelers)
+        'total_passengers' => count(value: $travelers),
+        'coupe' => $coupe_data
     ]);
 
     // دریافت گزینه‌های غذا
@@ -2134,7 +2136,7 @@ function completeReservation($chat_id)
     $user = getPrivateInfo($chat_id);
     $travelers = getTravelersWithFood($chat_id, $session['list_id']);
 
-    $result = makeReservation($session['ticket_id'], $travelers, $user);
+    $result = makeReservation($session['ticket_id'], $travelers, $user, $session['coupe']);
 
     $keyboard = [
         [
