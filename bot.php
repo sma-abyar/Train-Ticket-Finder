@@ -1964,7 +1964,7 @@ function makeReservation($ticketId, $passengers, $user)
             'nationalCode' => $passenger['national_code'],
             'food' => $passenger['food_id'],
             'return_food' => '',
-            'ageType' => $passenger['passenger_type'] == 1 ? 'adult' : ($passenger['passenger_type'] == 2 ? 'child' : 'infant'),
+            'ageType' => $passenger['passenger_type'] == 0 ? 'adult' : ($passenger['passenger_type'] == 1 ? 'child' : 'infant'),
             'isForeign' => false,
             'isWheelchairOrdered' => false,
             'errors' => []
