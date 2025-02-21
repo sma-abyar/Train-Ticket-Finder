@@ -383,15 +383,15 @@ function fetchTickets($userTrip)
     } elseif ($userTrip['bad_data_notif'] == 0) {
         // چاپ اطلاعات دریافتی از سرور
         $debug_info = "Debug Info:\n" .
-                     "Response: " . print_r(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), true) . "\n" .
-                     "Trip Info: " . print_r($userTrip, true);
-        
+            "Response: " . print_r(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), true) . "\n" .
+            "Trip Info: " . print_r($userTrip, true);
+
         // ارسال پیام خطا به کاربر
         sendMessage($userTrip['chat_id'], "بابا جون من یه مقدار چشمام ضعیفه 👨🏻‍🦳، قطاری توی تاریخ {$userTrip['date']} پیدا نکردم. \nبذار برم عینکمو بیارم، هر وقت چیزی به چشمم خورد خبرت می‌کنم 🧐");
-        
+
         // ارسال اطلاعات خطا به لاگ یا ادمین (یا خود کاربر اگر مایل هستید)
         file_put_contents('debug.log', "Received info: " . $debug_info . "\n", FILE_APPEND);
-        
+
         updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
     }
     // else if ($userTrip['critical_notif'] == 0) {  // اضافه کردن یک فیلد جدید برای این وضعیت
@@ -561,7 +561,9 @@ if (isset($update['inline_query'])) {
             // showPrivateInfo($chat_id);
             break;
         case 'ارسال پیام همگانی':
-            
+            if ($chat_id == $adminChatId){
+                setUserState($chat_id, 'GET_BROADCASTMESSAGE');
+            }
             break;
         default:
             if (!$userState || !isset($userState['current_state'])) {
@@ -659,6 +661,16 @@ if (isset($update['inline_query'])) {
             case 'SET_PRIVATE_INFO':
                 showPrivateInfo($chat_id);
                 // handleSetPrivateInfo($chat_id, $text);
+                break;
+            case 'SEND_BROADCAST_MESSAGE':
+                broadcastMessage($text, $adminChatId);
+                clearUserState($chat_id);
+                break;
+            case 'GET_BROADCASTMESSAGE':
+                if ($chat_id == $adminChatId){
+                    sendMessage($adminChatId, "لطفاً پیام مورد نظر برای ارسال همگانی را وارد کنید:");
+                    setUserState($chat_id, 'SEND_BROADCAST_MESSAGE');
+                }
                 break;
             case 'awaiting_name':
                 $db = initDatabase();
@@ -2567,5 +2579,16 @@ function getAvailableRoutesFromJson($jsonPath)
     return $routes;
 }
 
-
+// تابع ارسال پیام به همه کاربرهای تأیید شده
+function broadcastMessage($message, $chat_id)
+{
+    if ($chat_id == $GLOBALS['adminChatId']) {
+        $db = initDatabase();
+        // گرفتن لیست کاربرانی که تایید شده‌اند
+        $stmt = $db->query("SELECT chat_id FROM users WHERE approved = 1");
+        while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
+            sendMessage($row['chat_id'], $message);
+        }
+    }
+}
 ?>
