@@ -276,7 +276,7 @@ function approveUser($chat_id)
     $stmt = $db->prepare("UPDATE users SET approved = 1 WHERE chat_id = :chat_id");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
     $stmt->execute();
-    sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard());
+    sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard($chat_id));
 }
 
 // Get a list of approved users
@@ -494,7 +494,7 @@ if (isset($update['inline_query'])) {
     // Handle cancel button
     if ($text === 'لغو') {
         clearUserState($chat_id);
-        sendMessage($chat_id, "عملیات لغو شد.", getMainMenuKeyboard());
+        sendMessage($chat_id, "عملیات لغو شد.", getMainMenuKeyboard($chat_id));
         return;
     } // چک کردن دستور settrip_route
     if (strpos($text, '/settrip_route_') === 0) {
@@ -559,6 +559,9 @@ if (isset($update['inline_query'])) {
             setUserState($chat_id, 'SET_PRIVATE_INFO');
             // clearUserState($chat_id);
             // showPrivateInfo($chat_id);
+            break;
+        case 'ارسال پیام همگانی':
+            
             break;
         default:
             if (!$userState || !isset($userState['current_state'])) {
@@ -739,7 +742,7 @@ function showPrivateInfo($chat_id)
         if ($user_info) {
             // اگر اطلاعات موجود باشد
             $message = "✅ اطلاعات شخصی شما:\n";
-            $message .= "\n👤 نام: " . htmlspecialchars($user_info['person_name']);
+            $message .= "\n👤 نام و نام خانوادگی: " . htmlspecialchars($user_info['person_name']);
             $message .= "\n📞 شماره تلفن: " . htmlspecialchars($user_info['phone_number']);
             $message .= "\n📧 ایمیل: " . ($user_info['email'] ? htmlspecialchars($user_info['email']) : '—');
 
@@ -937,7 +940,7 @@ function handleStartCommand($chat_id, $username, $update)
     registerUser($chat_id, $username);
 
     if (isUserApproved($chat_id)) {
-        $keyboard = getMainMenuKeyboard();
+        $keyboard = getMainMenuKeyboard($chat_id);
         sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
     } else {
         sendMessage($chat_id, "⏳ حساب شما هنوز تأیید نشده است. لطفاً منتظر تأیید مدیر بمانید.");
@@ -2316,22 +2319,26 @@ function removeTravelerList($chat_id, $list_id)
     }
 }
 
-function getMainMenuKeyboard()
+function getMainMenuKeyboard($chat_id)
 {
+    $keyboard = [
+        [['text' => 'تنظیم سفر'], ['text' => 'نمایش سفرها']],
+        [['text' => 'نمایش مسافران'], ['text' => 'لیست‌های مسافران']],
+        [['text' => 'اطلاعات شخصی']]
+    ];
+
+    // اگر کاربر ادمین است دکمه ارسال پیام همگانی اضافه می‌شود
+    if ($chat_id == $GLOBALS['adminChatId']) {
+        $keyboard[] = [['text' => 'ارسال پیام همگانی']];
+    }
+
     return [
-        'keyboard' => [
-            [['text' => 'تنظیم سفر'], ['text' => 'نمایش سفرها']],
-            [
-                ['text' => 'نمایش مسافران'],
-                ['text' => 'لیست‌های مسافران']
-            ],
-            // [['text' => 'حذف سفر']],
-            [['text' => 'اطلاعات شخصی']]
-        ],
+        'keyboard' => $keyboard,
         'resize_keyboard' => true,
         'one_time_keyboard' => false
     ];
 }
+
 
 function addTravelerToList($chat_id, $list_id, $traveler_id)
 {
@@ -2422,7 +2429,7 @@ function addTravelerToList($chat_id, $list_id, $traveler_id)
 function startAddingPrivateInfo($chat_id)
 {
     setUserState($chat_id, 'awaiting_name');
-    sendMessage($chat_id, "📝 لطفاً نام خود را وارد کنید:");
+    sendMessage($chat_id, "📝 لطفاً نام و نام خانوادگی خود را وارد کنید:");
 }
 
 function startEditingPrivateInfo($chat_id)
