@@ -241,22 +241,24 @@ function getUserTrips($chat_id)
 // register new user
 function registerUser($chat_id, $username)
 {
-    $db = initDatabase();
-    $stmt = $db->prepare("INSERT OR IGNORE INTO users (chat_id) VALUES (:chat_id)");
-    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-    $stmt->execute();
-
-    // Create an inline keyboard with an "Approve User" button
-    $inlineKeyboard = [
-        'inline_keyboard' => [
-            [
-                ['text' => 'تأیید کاربر', 'callback_data' => "approve_user_$chat_id"]
+    if(!isUserApproved($chat_id)){
+        $db = initDatabase();
+        $stmt = $db->prepare("INSERT OR IGNORE INTO users (chat_id) VALUES (:chat_id)");
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->execute();
+    
+        // Create an inline keyboard with an "Approve User" button
+        $inlineKeyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'تأیید کاربر', 'callback_data' => "approve_user_$chat_id"]
+                ]
             ]
-        ]
-    ];
-
-    // Send the message to the admin with the inline button
-    sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard, false);
+        ];
+    
+        // Send the message to the admin with the inline button
+        sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard, false);
+    }
 }
 
 function isUserApproved($chat_id)
@@ -272,11 +274,19 @@ function isUserApproved($chat_id)
 // approve new user
 function approveUser($chat_id)
 {
-    $db = initDatabase();
-    $stmt = $db->prepare("UPDATE users SET approved = 1 WHERE chat_id = :chat_id");
-    $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-    $stmt->execute();
-    sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard($chat_id));
+    if (!isUserApproved($chat_id)) {
+        $db = initDatabase();
+        $stmt = $db->prepare("UPDATE users SET approved = 1 WHERE chat_id = :chat_id");
+        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
+        $stmt->execute();
+        $keyboard = [
+            "inline_keyboard" => [
+                [["text" => "تکمیل اطلاعات شخصی", "callback_data" => "add_private_info"]]
+            ]
+        ];
+        sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard($chat_id));
+        sendMessage($chat_id, "برای رزرو سفر توسط ربات، نیاز داریم که اطلاعات شما رو به عنوان رزرو کننده داشته باشیم. بریم تکمیلش کنیم؟ 😊", $keyboard);
+    }
 }
 
 // Get a list of approved users
@@ -561,7 +571,7 @@ if (isset($update['inline_query'])) {
             // showPrivateInfo($chat_id);
             break;
         case 'ارسال پیام همگانی':
-            if ($chat_id == $adminChatId){
+            if ($chat_id == $adminChatId) {
                 setUserState($chat_id, 'GET_BROADCASTMESSAGE');
             }
             break;
@@ -667,7 +677,7 @@ if (isset($update['inline_query'])) {
                 clearUserState($chat_id);
                 break;
             case 'GET_BROADCASTMESSAGE':
-                if ($chat_id == $adminChatId){
+                if ($chat_id == $adminChatId) {
                     sendMessage($adminChatId, "لطفاً پیام مورد نظر برای ارسال همگانی را وارد کنید:");
                     setUserState($chat_id, 'SEND_BROADCAST_MESSAGE');
                 }
