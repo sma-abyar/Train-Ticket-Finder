@@ -543,7 +543,7 @@ if (isset($update['inline_query'])) {
         case 'افزودن مسافر':
             setUserState($chat_id, 'ADD_TRAVELER');
             break;
-        case 'نمایش مسافران':
+        case 'مسافران سابق':
             setUserState($chat_id, 'SHOW_TRAVELERS');
             break;
         case 'افزودن لیست مسافران':
@@ -586,7 +586,7 @@ if (isset($update['inline_query'])) {
     if ($userState && isset($userState['current_state'])) {
         switch ($userState['current_state']) {
             case 'START':
-                handleStartCommand($chat_id, $username, $update);
+                handleStartCommand($chat_id, $update);
                 break;
             case 'HELP':
                 handleHelpCommand($chat_id);
@@ -955,7 +955,7 @@ function handleCallbackQuery($callback_query)
     }
 }
 
-function handleStartCommand($chat_id, $username, $update)
+function handleStartCommand($chat_id, $update)
 {
     $username = getUsernameFromMessage($update['message']);
     $username = escapeMarkdownV2($username);
@@ -2346,7 +2346,7 @@ function getMainMenuKeyboard($chat_id)
 {
     $keyboard = [
         [['text' => 'تنظیم سفر'], ['text' => 'نمایش سفرها']],
-        [['text' => 'نمایش مسافران'], ['text' => 'لیست‌های مسافران']],
+        [['text' => 'مسافران سابق'], ['text' => 'لیست‌های مسافران']],
         [['text' => 'اطلاعات شخصی']]
     ];
 
