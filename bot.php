@@ -1169,7 +1169,7 @@ function handleSetTripFilter($chat_id, $text)
 function handleAddTravelerCommand($chat_id)
 {
     setUserState($chat_id, 'SET_TRAVELER_FIRST_NAME');
-    sendMessage($chat_id, "لطفاً نام مسافر را وارد کنید:");
+    sendMessage($chat_id, "لطفاً نام مسافر (نام کوچک) را وارد کنید:");
 }
 
 function handleSetTravelerFirstName($chat_id, $text)
