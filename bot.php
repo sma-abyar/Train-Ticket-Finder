@@ -1279,6 +1279,7 @@ function handleSetTravelerWheelchair($chat_id, $text)
             . "جنسیت: $genderText\n"
             . "کد ملی: {$temp_data['national_code']}\n"
             . "نیاز به ویلچر: " . ($temp_data['wheelchair'] ? "بله" : "خیر"));
+        handleShowTravelersCommand($chat_id);
     } catch (Exception $e) {
         sendMessage($chat_id, "خطا در ثبت مسافر. لطفاً دوباره تلاش کنید.");
     }
