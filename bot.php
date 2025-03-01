@@ -439,7 +439,7 @@ function toEnglishNumbers($string)
 function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true)
 {
     $botToken = $GLOBALS['botToken'];
-    $url = "https://api.telegram.org/bot$botToken/sendMessage";
+    $url = "https://tapi.bale.ai/bot$botToken/sendMessage";
 
     if ($isPersian) {
         $text = toPersianNumbers($text);
@@ -2536,7 +2536,7 @@ function handleInlineQuery($inlineQuery)
     ];
 
     $botToken = $GLOBALS['botToken'];
-    $url = "https://api.telegram.org/bot$botToken/answerInlineQuery";
+    $url = "https://tapi.bale.ai/bot$botToken/answerInlineQuery";
 
     // استفاده از cURL برای ارسال درخواست به صورت POST
     $ch = curl_init($url);
