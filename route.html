@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>انتخاب مسیر قطار</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --background-color: #f5f5f5;
+            --card-color: #ffffff;
+            --text-color: #333333;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Tahoma, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background-color: var(--card-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            padding: 30px;
+        }
+        
+        h1 {
+            color: var(--primary-color);
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 26px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        select:focus {
+            border-color: var(--primary-color);
+            outline: none;
+        }
+        
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f0f7ff;
+            border-radius: 8px;
+            border-right: 4px solid var(--primary-color);
+        }
+        
+        .result p {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .route-code {
+            font-family: monospace;
+            background-color: #e9f5fe;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .copy-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .copy-btn:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--primary-color);
+        }
+        
+        .alert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 6px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>انتخاب مسیر قطار</h1>
+        <div class="form-group">
+            <label for="origin">مبدأ:</label>
+            <select id="origin">
+                <option value="">انتخاب مبدأ</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="destination">مقصد:</label>
+            <select id="destination">
+                <option value="">انتخاب مقصد</option>
+            </select>
+        </div>
+        <div class="result" id="result-box">
+            <p>کد مسیر:</p>
+            <div class="route-code">
+                <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
+                <button id="copy-btn" class="copy-btn">کپی کد</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="copy-alert" class="alert">کد مسیر کپی شد!</div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const originSelect = document.getElementById('origin');
+            const destinationSelect = document.getElementById('destination');
+            const routeCodeSpan = document.getElementById('route-code');
+            const copyBtn = document.getElementById('copy-btn');
+            const copyAlert = document.getElementById('copy-alert');
+
+            // به‌روزرسانی کد مسیر هنگام تغییر انتخاب‌ها
+            function updateRouteCode() {
+                const origin = originSelect.value;
+                const destination = destinationSelect.value;
+                
+                if (origin && destination) {
+                    if (origin === destination) {
+                        routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
+                        copyBtn.disabled = true;
+                    } else {
+                        const routeCode = `${origin}-${destination}`;
+                        routeCodeSpan.textContent = routeCode;
+                        copyBtn.disabled = false;
+                    }
+                } else {
+                    routeCodeSpan.textContent = "لطفاً مبدأ و مقصد را انتخاب کنید";
+                    copyBtn.disabled = true;
+                }
+            }
+
+            originSelect.addEventListener('change', updateRouteCode);
+            destinationSelect.addEventListener('change', updateRouteCode);
+
+            // کپی کردن کد مسیر
+            copyBtn.addEventListener('click', function() {
+                const routeCode = routeCodeSpan.textContent;
+                if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
+                    navigator.clipboard.writeText(routeCode).then(() => {
+                        copyAlert.style.opacity = '1';
+                        setTimeout(() => {
+                            copyAlert.style.opacity = '0';
+                        }, 2000);
+                    });
+                }
+            });
+
+            // خواندن داده‌ها فقط از فایل JSON خارجی
+            fetch('train_cities_large.json')
+                .then(response => response.json())
+                .then(cities => {
+                    // پر کردن منوهای کشویی با اطلاعات شهرها
+                    cities.forEach(city => {
+                        const originOption = document.createElement('option');
+                        originOption.value = city.code;
+                        originOption.textContent = city.text;
+                        originSelect.appendChild(originOption);
+
+                        const destOption = document.createElement('option');
+                        destOption.value = city.code;
+                        destOption.textContent = city.text;
+                        destinationSelect.appendChild(destOption);
+                    });
+                })
+                .catch(error => {
+                    console.error('خطا در بارگذاری داده‌ها:', error);
+                    routeCodeSpan.textContent = "خطا در بارگذاری اطلاعات شهرها";
+                });
+        });
+    </script>
+</body>
+</html>
