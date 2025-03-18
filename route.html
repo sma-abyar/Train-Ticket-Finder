@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,14 +13,24 @@
             --card-color: #ffffff;
             --text-color: #333333;
         }
-        
+
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('fonts/webfonts/Vazirmatn[wght].woff2') format('woff2 supports variations'),
+                url('fonts/webfonts/Vazirmatn[wght].woff2') format('woff2-variations');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
         }
-        
+
+
         body {
             background-color: var(--background-color);
             color: var(--text-color);
@@ -29,7 +40,7 @@
             min-height: 100vh;
             padding: 20px;
         }
-        
+
         .container {
             background-color: var(--card-color);
             border-radius: 12px;
@@ -38,24 +49,24 @@
             max-width: 500px;
             padding: 30px;
         }
-        
+
         h1 {
             color: var(--primary-color);
             text-align: center;
             margin-bottom: 30px;
             font-size: 26px;
         }
-        
+
         .form-group {
             margin-bottom: 20px;
         }
-        
+
         label {
             display: block;
             margin-bottom: 10px;
             font-weight: bold;
         }
-        
+
         select {
             width: 100%;
             padding: 12px;
@@ -66,12 +77,12 @@
             cursor: pointer;
             transition: border-color 0.3s;
         }
-        
+
         select:focus {
             border-color: var(--primary-color);
             outline: none;
         }
-        
+
         .result {
             margin-top: 30px;
             padding: 20px;
@@ -79,12 +90,12 @@
             border-radius: 8px;
             border-right: 4px solid var(--primary-color);
         }
-        
+
         .result p {
             font-weight: bold;
             margin-bottom: 10px;
         }
-        
+
         .route-code {
             font-family: monospace;
             background-color: #e9f5fe;
@@ -94,7 +105,7 @@
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .copy-btn {
             background-color: var(--primary-color);
             color: white;
@@ -105,17 +116,17 @@
             font-size: 14px;
             transition: background-color 0.3s;
         }
-        
+
         .copy-btn:hover {
             background-color: var(--secondary-color);
         }
-        
+
         .loading {
             text-align: center;
             padding: 20px;
             color: var(--primary-color);
         }
-        
+
         .alert {
             position: fixed;
             top: 20px;
@@ -129,18 +140,19 @@
             opacity: 0;
             transition: opacity 0.3s;
         }
-        
+
         @media (max-width: 480px) {
             .container {
                 padding: 20px;
             }
-            
+
             h1 {
                 font-size: 22px;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>انتخاب مسیر قطار</h1>
@@ -168,7 +180,7 @@
     <div id="copy-alert" class="alert">کد مسیر کپی شد!</div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const originSelect = document.getElementById('origin');
             const destinationSelect = document.getElementById('destination');
             const routeCodeSpan = document.getElementById('route-code');
@@ -179,7 +191,7 @@
             function updateRouteCode() {
                 const origin = originSelect.value;
                 const destination = destinationSelect.value;
-                
+
                 if (origin && destination) {
                     if (origin === destination) {
                         routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
@@ -199,7 +211,7 @@
             destinationSelect.addEventListener('change', updateRouteCode);
 
             // کپی کردن کد مسیر
-            copyBtn.addEventListener('click', function() {
+            copyBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
                     navigator.clipboard.writeText(routeCode).then(() => {
@@ -235,4 +247,5 @@
         });
     </script>
 </body>
+
 </html>
