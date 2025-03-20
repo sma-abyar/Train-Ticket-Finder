@@ -241,21 +241,22 @@ function getUserTrips($chat_id)
 // register new user
 function registerUser($chat_id, $username)
 {
-    if(!isUserApproved($chat_id)){
+    if (!isUserApproved($chat_id)) {
         $db = initDatabase();
         $stmt = $db->prepare("INSERT OR IGNORE INTO users (chat_id) VALUES (:chat_id)");
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
         $stmt->execute();
-    
+
         // Create an inline keyboard with an "Approve User" button
         $inlineKeyboard = [
             'inline_keyboard' => [
                 [
-                    ['text' => 'تأیید کاربر', 'callback_data' => "approve_user_$chat_id"]
+                    ['text' => 'تأیید کاربر', 'callback_data' => "approve_user_$chat_id"],
+                    ['text' => 'ارسال پیام هندی', 'callback_data' => "india_user_$chat_id"]
                 ]
             ]
         ];
-    
+
         // Send the message to the admin with the inline button
         sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard, false);
     }
@@ -860,6 +861,10 @@ function handleCallbackQuery($callback_query)
         approveUser($user_chat_id);
         // Notify the admin
         sendMessage($chat_id, "کاربر با شناسه $user_chat_id تأیید شد.");
+    } elseif (strpos($data, 'india_user_') === 0) {
+        // Extract the chat_id from the callback data
+        $user_chat_id = str_replace('india_user_', '', $data);
+        sendMessage(&user_c, "کاربر با شناسه $user_chat_id تأیید شد.");
     } elseif ($data === 'add_trip') {
         // Start the trip addition process
         handleSetTripCommand($chat_id);
