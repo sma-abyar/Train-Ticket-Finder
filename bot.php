@@ -1019,7 +1019,7 @@ function handleSetTripCommand($chat_id)
         'inline_keyboard' => [
             [
                 // دکمه ثبت مسیر (با callback_data)
-                ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
+                ['text' => 'مشهد به تهران', 'callback_data' => 'trip_route_mashhad-tehran'],
                 // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
                 ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
             ],
