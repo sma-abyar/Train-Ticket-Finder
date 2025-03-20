@@ -864,7 +864,7 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'india_user_') === 0) {
         // Extract the chat_id from the callback data
         $user_chat_id = str_replace('india_user_', '', $data);
-        sendMessage(&user_c, "کاربر با شناسه $user_chat_id تأیید شد.");
+        sendMessage($user_chat_id, "Hello dear! \n👉 If you are in India, check out this bot: \n@india_ticket_finder_bot");
     } elseif ($data === 'add_trip') {
         // Start the trip addition process
         handleSetTripCommand($chat_id);
@@ -1022,10 +1022,12 @@ function handleSetTripCommand($chat_id)
                 ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
                 // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
                 ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
-            ]
+            ],
+            [
+                ['text' => 'لیست کامل همه‌ی شهرها', 'url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/route.html']            ]
         ]
-
     ];
+    
     setUserState($chat_id, 'SET_TRIP_ROUTE');
     sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
 }
