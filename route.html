@@ -15,11 +15,20 @@
             --text-color: #333333;
         }
 
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('fonts/webfonts/Vazirmatn[wght].woff2') format('woff2 supports variations'),
+                url('fonts/webfonts/Vazirmatn[wght].woff2') format('woff2-variations');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
         }
 
         body {
@@ -52,6 +61,12 @@
             margin-bottom: 20px;
         }
 
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
         select {
             width: 100%;
             padding: 12px;
@@ -60,6 +75,12 @@
             font-size: 16px;
             background-color: white;
             cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        select:focus {
+            border-color: var(--primary-color);
+            outline: none;
         }
 
         .result {
@@ -70,21 +91,46 @@
             border-right: 4px solid var(--primary-color);
         }
 
+        .result p {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .route-code {
+            font-family: monospace;
+            background-color: #e9f5fe;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .send-btn {
             background-color: var(--primary-color);
             color: white;
             border: none;
             border-radius: 6px;
-            padding: 12px;
+            padding: 10px 16px;
             cursor: pointer;
             font-size: 16px;
             width: 100%;
             margin-top: 20px;
+            transition: background-color 0.3s;
         }
 
-        .send-btn:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
+        .send-btn:hover {
+            background-color: var(--secondary-color);
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
         }
     </style>
 </head>
@@ -104,81 +150,77 @@
                 <option value="">انتخاب مقصد</option>
             </select>
         </div>
-        <div class="result">
+        <div class="result" id="result-box">
             <p>کد مسیر:</p>
-            <div id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</div>
+            <div class="route-code">
+                <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
+            </div>
         </div>
         <button id="send-btn" class="send-btn" disabled>ارسال به ربات</button>
     </div>
 
     <script>
-        Telegram.WebApp.ready(); // آماده‌سازی مینی‌اپ
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // گسترش نمایش مینی اپ
 
-        // ست کردن تم تلگرام
-        function applyTheme() {
-            let theme = Telegram.WebApp.themeParams;
-            document.documentElement.style.setProperty('--background-color', theme.bg_color || '#ffffff');
-            document.documentElement.style.setProperty('--text-color', theme.text_color || '#000000');
-            document.documentElement.style.setProperty('--primary-color', theme.button_color || '#2ea8ff');
-            document.documentElement.style.setProperty('--card-color', theme.secondary_bg_color || '#f5f5f5');
-        }
-        applyTheme();
+        document.addEventListener('DOMContentLoaded', function () {
+            const originSelect = document.getElementById('origin');
+            const destinationSelect = document.getElementById('destination');
+            const routeCodeSpan = document.getElementById('route-code');
+            const sendBtn = document.getElementById('send-btn');
 
-        const originSelect = document.getElementById('origin');
-        const destinationSelect = document.getElementById('destination');
-        const routeCodeDiv = document.getElementById('route-code');
-        const sendBtn = document.getElementById('send-btn');
-
-        function updateRouteCode() {
-            const origin = originSelect.value;
-            const destination = destinationSelect.value;
-
-            if (origin && destination) {
-                if (origin === destination) {
-                    routeCodeDiv.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
-                    sendBtn.disabled = true;
-                } else {
-                    const routeCode = `${origin}-${destination}`;
-                    routeCodeDiv.textContent = routeCode;
-                    sendBtn.disabled = false;
+            function applyTelegramTheme() {
+                if (tg && tg.themeParams) {
+                    document.documentElement.style.setProperty('--primary-color', tg.themeParams.button_color || '#3498db');
+                    document.documentElement.style.setProperty('--secondary-color', tg.themeParams.button_text_color || '#2980b9');
+                    document.documentElement.style.setProperty('--background-color', tg.themeParams.bg_color || '#f5f5f5');
+                    document.documentElement.style.setProperty('--card-color', tg.themeParams.secondary_bg_color || '#ffffff');
+                    document.documentElement.style.setProperty('--text-color', tg.themeParams.text_color || '#333333');
                 }
-            } else {
-                routeCodeDiv.textContent = "لطفاً مبدأ و مقصد را انتخاب کنید";
-                sendBtn.disabled = true;
             }
-        }
+            applyTelegramTheme();
 
-        sendBtn.addEventListener('click', function () {
-            const routeCode = routeCodeDiv.textContent;
-            if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                Telegram.WebApp.sendData(routeCode); // ارسال به ربات
-                Telegram.WebApp.close(); // بستن مینی‌اپ
+            function updateRouteCode() {
+                const origin = originSelect.value;
+                const destination = destinationSelect.value;
+
+                if (origin && destination) {
+                    if (origin === destination) {
+                        routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
+                        sendBtn.disabled = true;
+                    } else {
+                        const routeCode = `${origin}-${destination}`;
+                        routeCodeSpan.textContent = routeCode;
+                        sendBtn.disabled = false;
+                    }
+                } else {
+                    routeCodeSpan.textContent = "لطفاً مبدأ و مقصد را انتخاب کنید";
+                    sendBtn.disabled = true;
+                }
             }
-        });
 
-        originSelect.addEventListener('change', updateRouteCode);
-        destinationSelect.addEventListener('change', updateRouteCode);
+            originSelect.addEventListener('change', updateRouteCode);
+            destinationSelect.addEventListener('change', updateRouteCode);
 
-        // دریافت اطلاعات شهرها از JSON
-        fetch('train_cities_large.json')
-            .then(response => response.json())
-            .then(cities => {
-                cities.forEach(city => {
-                    const originOption = document.createElement('option');
-                    originOption.value = city.code;
-                    originOption.textContent = city.text;
-                    originSelect.appendChild(originOption);
-
-                    const destOption = document.createElement('option');
-                    destOption.value = city.code;
-                    destOption.textContent = city.text;
-                    destinationSelect.appendChild(destOption);
-                });
-            })
-            .catch(error => {
-                console.error('خطا در بارگذاری داده‌ها:', error);
-                routeCodeDiv.textContent = "خطا در بارگذاری اطلاعات شهرها";
+            sendBtn.addEventListener('click', function () {
+                const routeCode = routeCodeSpan.textContent;
+                if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
+                    tg.sendData(routeCode);
+                    tg.close(); // بعد از ارسال، مینی اپ بسته شود
+                }
             });
+
+            fetch('train_cities_large.json')
+                .then(response => response.json())
+                .then(cities => {
+                    cities.forEach(city => {
+                        const option = new Option(city.text, city.code);
+                        originSelect.add(option.cloneNode(true));
+                        destinationSelect.add(option);
+                    });
+                })
+                .catch(error => console.error('خطا در بارگذاری داده‌ها:', error));
+        });
     </script>
 </body>
 
