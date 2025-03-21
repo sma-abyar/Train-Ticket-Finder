@@ -1016,11 +1016,11 @@ function handleSetTripCommand($chat_id)
                 // دکمه ثبت مسیر (با callback_data)
                 ['text' => 'تهران به مشهد', 'callback_data' => 'trip_route_tehran-mashhad'],
                 // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
-                ['text' => 'جستجوی مسیر', 'url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/route.html']
+                ['text' => 'جستجوی مسیر', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/route.html']]
             ]
         ]
-
     ];
+    
     setUserState($chat_id, 'SET_TRIP_ROUTE');
     sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
 }
