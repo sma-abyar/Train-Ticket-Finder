@@ -1024,7 +1024,7 @@ function handleSetTripCommand($chat_id)
                 ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
             ],
             [
-                ['text' => 'لیست کامل همه‌ی شهرها', 'url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/route.html']            ]
+                ['text' => 'لیست کامل همه‌ی شهرها', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/route.html']]            ]
         ]
     ];
     
