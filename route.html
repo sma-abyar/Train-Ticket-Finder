@@ -2,6 +2,7 @@
 <html lang="fa" dir="rtl">
 
 <head>
+    <script src="https://tapi.bale.ai/miniapp.js?2"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>انتخاب مسیر قطار</title>
@@ -32,7 +33,7 @@
 
 
         body {
-            background-color: var(--background-color);
+            background-color: var(--bale-bg_color);
             color: var(--text-color);
             display: flex;
             justify-content: center;
@@ -180,6 +181,7 @@
     <div id="copy-alert" class="alert">کد مسیر کپی شد!</div>
 
     <script>
+        console.log(window.Bale.themeParams);
         document.addEventListener('DOMContentLoaded', function () {
             const originSelect = document.getElementById('origin');
             const destinationSelect = document.getElementById('destination');
