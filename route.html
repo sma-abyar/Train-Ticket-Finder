@@ -73,7 +73,7 @@
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 16px;
-            background-color: white;
+            background-color: var(--tg-secondary-bg-color, #f9f9f9);;
             cursor: pointer;
             transition: border-color 0.3s;
         }
@@ -86,7 +86,7 @@
         .result {
             margin-top: 30px;
             padding: 20px;
-            background-color: #f0f7ff;
+            background-color: var(--tg-secondary-bg-color, #f9f9f9);;
             border-radius: 8px;
             border-right: 4px solid var(--primary-color);
         }
@@ -176,6 +176,7 @@
                     document.documentElement.style.setProperty('--background-color', tg.themeParams.bg_color || '#f5f5f5');
                     document.documentElement.style.setProperty('--card-color', tg.themeParams.secondary_bg_color || '#ffffff');
                     document.documentElement.style.setProperty('--text-color', tg.themeParams.text_color || '#333333');
+                    document.documentElement.style.setProperty("--tg-secondary-bg-color", theme.secondary_bg_color || "#f9f9f9");
                 }
             }
             applyTelegramTheme();
@@ -205,7 +206,7 @@
             sendBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                    tg.sendData(routeCode);
+                    tg.sendData(JSON.stringify({ route: routeCode }));
                     tg.close(); // بعد از ارسال، مینی اپ بسته شود
                 }
             });

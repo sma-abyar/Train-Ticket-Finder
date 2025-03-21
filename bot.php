@@ -493,6 +493,23 @@ function getUsernameFromMessage($message)
 
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
+if (isset($update['message']['web_app_data'])) {
+    $user_id = $update['message']['from']['id'];
+    $raw_data = $update['message']['web_app_data']['data'];
+
+    // دیکد کردن JSON ورودی
+    $decoded_data = json_decode($raw_data, true);
+
+    if ($decoded_data) {
+        // استخراج مقدار اصلی
+        $routeCode = $decoded_data['route'] ?? 'نامشخص';
+
+        // ارسال پیام تأیید همراه با داده
+        sendMessage($user_id, "🚆 مسیر انتخابی شما:\n\n" . $routeCode);
+    } else {
+        sendMessage($user_id, "❌ خطا در پردازش داده‌های Mini App");
+    }
+}
 if (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
     exit;
