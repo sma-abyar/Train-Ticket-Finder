@@ -222,13 +222,23 @@
             fetch('train_cities_large.json')
                 .then(response => response.json())
                 .then(cities => {
+                    // پر کردن منوهای کشویی با اطلاعات شهرها
                     cities.forEach(city => {
-                        const option = new Option(city.text, city.code);
-                        originSelect.add(option.cloneNode(true));
-                        destinationSelect.add(option);
+                        const originOption = document.createElement('option');
+                        originOption.value = city.code;
+                        originOption.textContent = city.text;
+                        originSelect.appendChild(originOption);
+
+                        const destOption = document.createElement('option');
+                        destOption.value = city.code;
+                        destOption.textContent = city.text;
+                        destinationSelect.appendChild(destOption);
                     });
                 })
-                .catch(error => console.error('خطا در بارگذاری داده‌ها:', error));
+                .catch(error => {
+                    console.error('خطا در بارگذاری داده‌ها:', error);
+                    routeCodeSpan.textContent = "خطا در بارگذاری اطلاعات شهرها";
+                });
         });
     </script>
 </body>
