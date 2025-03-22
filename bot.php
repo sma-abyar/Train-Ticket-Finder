@@ -241,12 +241,12 @@ function getUserTrips($chat_id)
 // register new user
 function registerUser($chat_id, $username)
 {
-    if(!isUserApproved($chat_id)){
+    if (!isUserApproved($chat_id)) {
         $db = initDatabase();
         $stmt = $db->prepare("INSERT OR IGNORE INTO users (chat_id) VALUES (:chat_id)");
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
         $stmt->execute();
-    
+
         // Create an inline keyboard with an "Approve User" button
         $inlineKeyboard = [
             'inline_keyboard' => [
@@ -255,7 +255,7 @@ function registerUser($chat_id, $username)
                 ]
             ]
         ];
-    
+
         // Send the message to the admin with the inline button
         sendMessage($GLOBALS['adminChatId'], "کاربر جدید با مشخصات: $username\nبرای تأیید، دکمه زیر را کلیک کنید:", $inlineKeyboard, false);
     }
@@ -492,7 +492,27 @@ function getUsernameFromMessage($message)
 
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
-if (isset($update['inline_query'])) {
+if (isset($update['message']['web_app_data'])) {
+    $chat_id = $update['message']['chat']['id'];
+    $routeCode = $update['message']['web_app_data']['data'];
+    
+    // پردازش کد مسیر
+    if (strpos($routeCode, '-') !== false) {
+        $parts = explode('-', $routeCode);
+        if (count($parts) >= 2) {
+            $origin = $parts[0];
+            $destination = $parts[1];
+            // ارسال پاسخ به کاربر
+            $message = "کد مسیر دریافت شد: $routeCode\n";           
+            sendMessage($chat_id, $message);
+            handleSetTripRoute($chat_id, $routeCode);
+        } else {
+            sendMessage($chat_id, "فرمت داده نامعتبر است.");
+        }
+    } else {
+        sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
+    }
+} elseif (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
     exit;
 } elseif (isset($update['callback_query'])) {
@@ -1020,7 +1040,7 @@ function handleSetTripCommand($chat_id)
             ]
         ]
     ];
-    
+
     setUserState($chat_id, 'SET_TRIP_ROUTE');
     sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
 }

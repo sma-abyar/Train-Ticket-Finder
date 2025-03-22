@@ -175,7 +175,7 @@
             <p>کد مسیر:</p>
             <div class="route-code">
                 <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
-                <button id="copy-btn" class="copy-btn">کپی کد</button>
+                <button id="copy-btn" class="copy-btn">ارسال کد</button>
             </div>
         </div>
     </div>
@@ -184,7 +184,7 @@
 
     <script>
         const bl = window.Bale.WebApp;
-        console.log(window.Bale.WebApp.themeParams);
+        console.log(bl.themeParams);
         document.addEventListener('DOMContentLoaded', function () {
             const originSelect = document.getElementById('origin');
             const destinationSelect = document.getElementById('destination');
@@ -214,11 +214,11 @@
 
             function applyBaleTheme() {
                 if (bl && bl.themeParams) {
-                    document.documentElement.style.setProperty('--primary-color', window.Bale.WebApp.themeParams.button_color || '#3498db');
-                    document.documentElement.style.setProperty('--secondary-color', window.Bale.WebApp.themeParams.button_text_color || '#2980b9');
-                    document.documentElement.style.setProperty('--background-color', window.Bale.WebApp.themeParams.bg_color || '#f5f5f5');
-                    document.documentElement.style.setProperty('--card-color', window.Bale.WebApp.themeParams.secondary_bg_color || '#ffffff');
-                    document.documentElement.style.setProperty('--text-color', window.Bale.WebApp.themeParams.text_color || '#333333');
+                    document.documentElement.style.setProperty('--primary-color', bl.themeParams.button_color || '#3498db');
+                    document.documentElement.style.setProperty('--secondary-color', bl.themeParams.button_text_color || '#2980b9');
+                    document.documentElement.style.setProperty('--background-color', bl.themeParams.bg_color || '#f5f5f5');
+                    document.documentElement.style.setProperty('--card-color', bl.themeParams.secondary_bg_color || '#ffffff');
+                    document.documentElement.style.setProperty('--text-color', bl.themeParams.text_color || '#333333');
                 }
             }
             applyBaleTheme();
@@ -227,15 +227,20 @@
             destinationSelect.addEventListener('change', updateRouteCode);
 
             // کپی کردن کد مسیر
+            // جایگزین کد فعلی دکمه کپی
             copyBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                    navigator.clipboard.writeText(routeCode).then(() => {
-                        copyAlert.style.opacity = '1';
-                        setTimeout(() => {
-                            copyAlert.style.opacity = '0';
-                        }, 2000);
-                    });
+                    // ارسال کد مسیر به ربات
+                    bl.sendData(routeCode);
+
+                    // نمایش پیام موفقیت‌آمیز
+                    copyAlert.textContent = "کد مسیر ارسال شد!";
+                    copyAlert.style.opacity = '1';
+                    setTimeout(() => {
+                        copyAlert.style.opacity = '0';
+                    }, 2000);
+                    bl.close();
                 }
             });
 
