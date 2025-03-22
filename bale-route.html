@@ -124,23 +124,6 @@
             background-color: var(--primary-color);
         }
 
-        .send-btn {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 10px 16px;
-            cursor: pointer;
-            font-size: 16px;
-            width: 100%;
-            margin-top: 20px;
-            transition: background-color 0.3s;
-        }
-
-        .send-btn:hover {
-            background-color: var(--primary-color);
-        }
-
         .loading {
             text-align: center;
             padding: 20px;
@@ -192,9 +175,9 @@
             <p>کد مسیر:</p>
             <div class="route-code">
                 <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
+                <button id="copy-btn" class="copy-btn">ارسال کد</button>
             </div>
         </div>
-        <button id="send-btn" class="send-btn">ارسال به ربات</button>
     </div>
 
     <div id="copy-alert" class="alert">کد مسیر کپی شد!</div>
@@ -206,7 +189,8 @@
             const originSelect = document.getElementById('origin');
             const destinationSelect = document.getElementById('destination');
             const routeCodeSpan = document.getElementById('route-code');
-            const sendBtn = document.getElementById('send-btn');
+            const copyBtn = document.getElementById('copy-btn');
+            const copyAlert = document.getElementById('copy-alert');
 
             // به‌روزرسانی کد مسیر هنگام تغییر انتخاب‌ها
             function updateRouteCode() {
@@ -216,15 +200,15 @@
                 if (origin && destination) {
                     if (origin === destination) {
                         routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
-                        sendBtn.disabled = true;
+                        copyBtn.disabled = true;
                     } else {
                         const routeCode = `${origin}-${destination}`;
                         routeCodeSpan.textContent = routeCode;
-                        sendBtn.disabled = false;
+                        copyBtn.disabled = false;
                     }
                 } else {
                     routeCodeSpan.textContent = "لطفاً مبدأ و مقصد را انتخاب کنید";
-                    sendBtn.disabled = true;
+                    copyBtn.disabled = true;
                 }
             }
 
@@ -244,7 +228,7 @@
 
             // کپی کردن کد مسیر
             // جایگزین کد فعلی دکمه کپی
-            sendBtn.addEventListener('click', function () {
+            copyBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
                     // ارسال کد مسیر به ربات
