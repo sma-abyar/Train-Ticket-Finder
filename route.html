@@ -70,10 +70,10 @@
         select {
             width: 100%;
             padding: 12px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--primary-color);
             border-radius: 8px;
             font-size: 16px;
-            background-color: var(--tg-secondary-bg-color, #f9f9f9);;
+            background-color: var(--background-color, #f9f9f9);;
             cursor: pointer;
             transition: border-color 0.3s;
         }
@@ -86,7 +86,7 @@
         .result {
             margin-top: 30px;
             padding: 20px;
-            background-color: var(--tg-secondary-bg-color, #f9f9f9);;
+            background-color: var(--background-color, #f9f9f9);;
             border-radius: 8px;
             border-right: 4px solid var(--primary-color);
         }
@@ -98,7 +98,8 @@
 
         .route-code {
             font-family: monospace;
-            background-color: #e9f5fe;
+            background-color: var(--card-color);
+            color: var(--primary-color);
             padding: 15px;
             border-radius: 8px;
             display: flex;
@@ -206,8 +207,15 @@
             sendBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                    tg.sendData(JSON.stringify({ route: routeCode }));
-                    tg.close(); // بعد از ارسال، مینی اپ بسته شود
+                    // ارسال کد مسیر به ربات
+                    bl.sendData(routeCode);
+                    // نمایش پیام موفقیت‌آمیز
+                    copyAlert.textContent = "کد مسیر ارسال شد!";
+                    copyAlert.style.opacity = '1';
+                    setTimeout(() => {
+                        copyAlert.style.opacity = '0';
+                    }, 2000);
+                    bl.close();
                 }
             });
 

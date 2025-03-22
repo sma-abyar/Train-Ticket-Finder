@@ -494,23 +494,26 @@ function getUsernameFromMessage($message)
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
-    $user_id = $update['message']['from']['id'];
-    $raw_data = $update['message']['web_app_data']['data'];
-
-    // دیکد کردن JSON ورودی
-    $decoded_data = json_decode($raw_data, true);
-
-    if ($decoded_data) {
-        // استخراج مقدار اصلی
-        $routeCode = $decoded_data['route'] ?? 'نامشخص';
-
-        // ارسال پیام تأیید همراه با داده
-        sendMessage($user_id, "🚆 مسیر انتخابی شما:\n\n" . $routeCode);
+    $chat_id = $update['message']['chat']['id'];
+    $routeCode = $update['message']['web_app_data']['data'];
+    
+    // پردازش کد مسیر
+    if (strpos($routeCode, '-') !== false) {
+        $parts = explode('-', $routeCode);
+        if (count($parts) >= 2) {
+            $origin = $parts[0];
+            $destination = $parts[1];
+            // ارسال پاسخ به کاربر
+            $message = "کد مسیر دریافت شد: $routeCode\n";           
+            sendMessage($chat_id, $message);
+            handleSetTripRoute($chat_id, $routeCode);
+        } else {
+            sendMessage($chat_id, "فرمت داده نامعتبر است.");
+        }
     } else {
-        sendMessage($user_id, "❌ خطا در پردازش داده‌های Mini App");
+        sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
     }
-}
-if (isset($update['inline_query'])) {
+} elseif (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
     exit;
 } elseif (isset($update['callback_query'])) {
