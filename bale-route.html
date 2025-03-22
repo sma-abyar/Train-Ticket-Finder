@@ -175,7 +175,7 @@
             <p>کد مسیر:</p>
             <div class="route-code">
                 <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
-                <button id="copy-btn" class="copy-btn">ارسال کد</button>
+                <button id="copy-btn" class="copy-btn">بَرو بَریم</button>
             </div>
         </div>
     </div>
@@ -231,16 +231,24 @@
             copyBtn.addEventListener('click', function () {
                 const routeCode = routeCodeSpan.textContent;
                 if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                    // ارسال کد مسیر به ربات
-                    bl.sendData(routeCode);
+                    // اطمینان از اینکه داده یک رشته ساده است
+                    const simpleString = String(routeCode).trim();
+                    console.log('Sending data:', simpleString);
 
-                    // نمایش پیام موفقیت‌آمیز
+                    try {
+                        bl.sendData(simpleString);
+                        console.log('Data sent successfully');
+                    } catch (error) {
+                        console.error('Error sending data:', error);
+                    }
+
+                    // نمایش پیام و بستن با تأخیر
                     copyAlert.textContent = "کد مسیر ارسال شد!";
                     copyAlert.style.opacity = '1';
                     setTimeout(() => {
                         copyAlert.style.opacity = '0';
-                    }, 2000);
-                    bl.close();
+                        setTimeout(() => bl.close(), 1000);
+                    }, 1500);
                 }
             });
 
