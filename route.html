@@ -31,6 +31,7 @@
             font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
         }
 
+
         body {
             background-color: var(--background-color);
             color: var(--text-color);
@@ -73,9 +74,10 @@
             border: 1px solid var(--primary-color);
             border-radius: 8px;
             font-size: 16px;
-            background-color: var(--background-color, #f9f9f9);;
+            background-color: var(--background-color);
             cursor: pointer;
             transition: border-color 0.3s;
+            color: var(--text-color);
         }
 
         select:focus {
@@ -86,7 +88,7 @@
         .result {
             margin-top: 30px;
             padding: 20px;
-            background-color: var(--background-color, #f9f9f9);;
+            background-color: var(--background-color);
             border-radius: 8px;
             border-right: 4px solid var(--primary-color);
         }
@@ -107,6 +109,21 @@
             align-items: center;
         }
 
+        .copy-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--primary-color);
+        }
+
         .send-btn {
             background-color: var(--primary-color);
             color: white;
@@ -121,7 +138,27 @@
         }
 
         .send-btn:hover {
-            background-color: var(--secondary-color);
+            background-color: var(--primary-color);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--primary-color);
+        }
+
+        .alert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 6px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
         }
 
         @media (max-width: 480px) {
