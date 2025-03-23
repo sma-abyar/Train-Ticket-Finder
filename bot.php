@@ -284,8 +284,8 @@ function approveUser($chat_id)
                 [["text" => "تکمیل اطلاعات شخصی", "callback_data" => "add_private_info"]]
             ]
         ];
-        sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard($chat_id));
-        sendMessage($chat_id, "برای رزرو سفر توسط ربات، نیاز داریم که اطلاعات شما رو به عنوان رزرو کننده داشته باشیم. بریم تکمیلش کنیم؟ 😊", $keyboard);
+        // sendMessage($chat_id, "شما تأیید شدید!", getMainMenuKeyboard($chat_id));
+        sendMessage($chat_id, "سلام🙌 \n برای رزرو سفر توسط ربات، نیاز داریم که اطلاعات شما رو به عنوان رزرو کننده داشته باشیم. بریم تکمیلش کنیم؟ 😊", $keyboard);
     }
 }
 
@@ -495,7 +495,7 @@ $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
     $routeCode = $update['message']['web_app_data']['data'];
-    
+
     // پردازش کد مسیر
     if (strpos($routeCode, '-') !== false) {
         $parts = explode('-', $routeCode);
@@ -503,7 +503,7 @@ if (isset($update['message']['web_app_data'])) {
             $origin = $parts[0];
             $destination = $parts[1];
             // ارسال پاسخ به کاربر
-            $message = "کد مسیر دریافت شد: $routeCode\n";           
+            $message = "کد مسیر دریافت شد: $routeCode\n";
             sendMessage($chat_id, $message);
             handleSetTripRoute($chat_id, $routeCode);
         } else {
@@ -549,6 +549,8 @@ if (isset($update['message']['web_app_data'])) {
         case '/start':
         case 'شروع':
             setUserState($chat_id, 'START');
+            approveUser($chat_id);
+            getApprovedUsers();
             break;
         // case '/help':
         case 'راهنما':
@@ -981,12 +983,8 @@ function handleStartCommand($chat_id, $update)
     $username = escapeMarkdownV2($username);
     registerUser($chat_id, $username);
 
-    if (isUserApproved($chat_id)) {
-        $keyboard = getMainMenuKeyboard($chat_id);
-        sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
-    } else {
-        sendMessage($chat_id, "⏳ حساب شما هنوز تأیید نشده است. لطفاً منتظر تأیید مدیر بمانید.");
-    }
+    $keyboard = getMainMenuKeyboard($chat_id);
+    sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
 }
 
 
