@@ -383,11 +383,11 @@ function fetchTickets($userTrip)
                 }
             }
             if (!$found && ($userTrip['no_counting_notif'] == 0)) {
-                sendMessage($userTrip['chat_id'], "*دیر رسیدی خوشگله!*\nهیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$route_title} صندلی خالی نداره.\n حالا توکل به خدا، صبر کن شاید موجود شد. خبر از ما😊😉");
+                sendMessage($userTrip['chat_id'], "*دیر رسیدی خوشگله!*\nهیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$route_title} صندلی خالی نداره.\n حالا توکل به خدا، صبر کن شاید موجود شد. خبر از ما😊😉", getMainMenuKeyboard($userTrip['chat_id']));
                 updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
             }
         } elseif ($userTrip['no_ticket_notif'] == 0) {
-            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$userTrip['route']} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎");
+            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {$userTrip['route']} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
             updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
         }
     } elseif ($userTrip['bad_data_notif'] == 0) {
@@ -599,7 +599,7 @@ if (isset($update['message']['web_app_data'])) {
             break;
         default:
             if (!$userState || !isset($userState['current_state'])) {
-                sendMessage($chat_id, "دوست خوبم🌹\nبیا بازیگوشی نکنیم و از گزینه‌های قرار داده شده استفاده کنیم😁");
+                sendMessage($chat_id, "دوست خوبم🌹\nبیا بازیگوشی نکنیم و از گزینه‌های قرار داده شده استفاده کنیم😁", getMainMenuKeyboard($chat_id));
             }
     }
 
@@ -737,7 +737,7 @@ if (isset($update['message']['web_app_data'])) {
                     $stmt->execute();
                     $db->close(); // بستن دیتابیس
                 } catch (Exception $e) {
-                    sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.");
+                    sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.", getMainMenuKeyboard($chat_id));
                     break;
                 }
 
@@ -757,13 +757,13 @@ if (isset($update['message']['web_app_data'])) {
                         $stmt->execute();
                         $db->close(); // بستن دیتابیس
                     } catch (Exception $e) {
-                        sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.");
+                        sendMessage($chat_id, "❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.", getMainMenuKeyboard($chat_id));
                         break;
                     }
                 }
 
                 clearUserState($chat_id);
-                sendMessage($chat_id, "✅ اطلاعات شما با موفقیت ثبت شد.");
+                sendMessage($chat_id, "✅ اطلاعات شما با موفقیت ثبت شد.", getMainMenuKeyboard($chat_id));
                 break;
 
             default:
@@ -848,7 +848,7 @@ function handleCallbackQuery($callback_query)
         // Call the function to remove the traveler
         removeTraveler($chat_id, $traveler_id);
         // Notify the user
-        sendMessage($chat_id, "مسافر با موفقیت حذف شد.");
+        sendMessage($chat_id, "مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
     } elseif ($data === 'add_traveler_list') {
         // Start the traveler list addition process
         handleAddTravelerListCommand($chat_id);
@@ -917,7 +917,7 @@ function handleCallbackQuery($callback_query)
         // Fetch the list of travelers
         $travelers = listTravelers($chat_id);
         if (empty($travelers)) {
-            sendMessage($chat_id, "شما هیچ مسافری برای افزودن به لیست ندارید.");
+            sendMessage($chat_id, "شما هیچ مسافری برای افزودن به لیست ندارید.", getMainMenuKeyboard($chat_id));
             return;
         }
         // Create inline buttons for each traveler
@@ -937,7 +937,7 @@ function handleCallbackQuery($callback_query)
         // Call the function to add the traveler to the list
         addTravelerToList($chat_id, $list_id, $traveler_id);
         // Notify the user
-        sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.");
+        sendMessage($chat_id, "مسافر با موفقیت به لیست اضافه شد.", getMainMenuKeyboard($chat_id));
     } elseif (strpos($data, 'trip_type_') === 0) {
         // Handle trip type selection
         $type = str_replace('trip_type_', '', $data);
@@ -1150,7 +1150,7 @@ function handleSetTripType($chat_id, $text)
             ]
         ];
 
-        sendMessage($chat_id, "آیا ترجیح می‌دهید کوپه باشد؟", $inlineKeyboard);
+        sendMessage($chat_id, "آیادرخواست کوپه‌ی دربست دارید؟", $inlineKeyboard);
         return;
     }
 }
@@ -1179,7 +1179,7 @@ function handleSetTripFilter($chat_id, $text)
     $temp_data = getUserState($chat_id)['temp_data'];
     $temp_data['filter'] = $filter;
     saveUserTrip($chat_id, $temp_data);
-    sendMessage($chat_id, "اطلاعات سفر شما با موفقیت ثبت شد.");
+    sendMessage($chat_id, "اطلاعات سفر شما با موفقیت ثبت شد.", getMainMenuKeyboard($chat_id));
     processUserTrips($chat_id);
     clearUserState($chat_id);
 }
@@ -1313,15 +1313,13 @@ function handleAddTravelerListCommand($chat_id)
 function handleSetTravelerListName($chat_id, $text)
 {
     $list_name = $text;
-    // setUserState($chat_id, 'SET_TRAVELER_LIST_MEMBERS', ['name' => $list_name]);
     try {
         createTravelerList($chat_id, $list_name);
-        sendMessage($chat_id, "لیست مسافران *{$list_name}* با موفقیت ایجاد شد.");
+        sendMessage($chat_id, "لیست مسافران *{$list_name}* با موفقیت ایجاد شد.", getMainMenuKeyboard($chat_id));
         clearUserState($chat_id);
     } catch (Exception $e) {
         sendMessage($chat_id, "خطا در ایجاد لیست مسافران. لطفاً مطمئن شوید همه شماره‌های مسافران معتبر هستند.", null);
     }
-    // sendMessage($chat_id, "لطفاً شماره‌های مسافران را وارد کنید (مثال: 1,2,3,4):");
 }
 
 function handleSetTravelerListMembers($chat_id, $text)
@@ -1456,7 +1454,7 @@ function showUserTrips($chat_id)
 {
     $trips = getUserTrips($chat_id);
     if (empty($trips)) {
-        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.");
+        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.", getMainMenuKeyboard($chat_id));
         return;
     }
 
@@ -1901,44 +1899,6 @@ function getTravelersFromList($list_id, $chat_id)
         return [];
     }
 }
-// function handleFoodSelection($callback_data, $chat_id)
-// {
-//     // استخراج اطلاعات از callback_data
-//     list(, $ticket_id, $list_id, $passenger_index, $food_id) = explode('_', $callback_data);
-
-//     // ذخیره انتخاب غذا در session یا دیتابیس موقت
-//     saveTemporaryFoodSelection($chat_id, $list_id, $passenger_index, $food_id);
-
-//     // بررسی اینکه آیا همه مسافران غذای خود را انتخاب کرده‌اند
-//     if (isAllFoodSelected($chat_id, $list_id)) {
-//         // دریافت اطلاعات کاربر (این بخش باید پیاده‌سازی شود)
-//         $user = getPrivateInfo($chat_id);
-
-//         // دریافت اطلاعات مسافران با غذاهای انتخاب شده
-//         $travelers = getTravelersWithFood($chat_id, $list_id);
-
-//         // انجام رزرو
-//         $result = makeReservation($ticket_id, $travelers, $user);
-
-//         if ($result['status'] === 'success') {
-//             $message = "✅ رزرو با موفقیت انجام شد!\n"
-//                 . "🔑 کد رهگیری: {$result['rsid']}\n"
-//                 . "لطفاً این کد را نزد خود نگه دارید.";
-//         } else {
-//             $message = "❌ متأسفانه در رزرو بلیط مشکلی پیش آمد.\n"
-//                 . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
-//         }
-
-//         // پاک کردن اطلاعات موقت
-//         clearTemporaryFoodSelections($chat_id, $list_id);
-//     } else {
-//         $message = "✔️ انتخاب غذا ثبت شد.\n"
-//             . "لطفاً برای سایر مسافران نیز غذا انتخاب کنید.";
-//     }
-
-//     // آپدیت پیام callback
-//     answerCallbackQuery($callback_data['id'], $message);
-// }
 
 function getFoodOptions($ticketId, $passengerCount)
 {
@@ -2142,7 +2102,7 @@ function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null
     // file_put_contents('debug.log', "Session data: " . print_r($session, true) . "\n", FILE_APPEND);
 
     if (!$session) {
-        sendMessage($chat_id, "⚠️ خطا: اطلاعات جلسه یافت نشد");
+        sendMessage($chat_id, "⚠️ خطا: اطلاعات یافت نشد");
         return;
     }
 
@@ -2338,7 +2298,7 @@ function removeTraveler($chat_id, $traveler_id)
     $result = $stmt->execute();
 
     if ($db->changes() > 0) {
-        sendMessage($chat_id, "مسافر با شماره $traveler_id با موفقیت حذف شد.");
+        sendMessage($chat_id, "مسافر با شماره $traveler_id با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
     } else {
         sendMessage($chat_id, "مسافری با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
     }
@@ -2354,7 +2314,7 @@ function removeTravelerList($chat_id, $list_id)
     $result = $stmt->execute();
 
     if ($db->changes() > 0) {
-        sendMessage($chat_id, "لیست مسافران با موفقیت حذف شد.");
+        sendMessage($chat_id, "لیست مسافران با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
     } else {
         sendMessage($chat_id, "لیستی با این شماره یافت نشد یا شما اجازه حذف آن را ندارید.");
     }
@@ -2616,7 +2576,7 @@ function broadcastMessage($message, $chat_id)
         // گرفتن لیست کاربرانی که تایید شده‌اند
         $stmt = $db->query("SELECT chat_id FROM users WHERE approved = 1");
         while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
-            sendMessage($row['chat_id'], $message);
+            sendMessage($row['chat_id'], $message, getMainMenuKeyboard($row['chat_id']));
         }
     }
 }
