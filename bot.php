@@ -2573,13 +2573,13 @@ function broadcastMessage($message, $chat_id)
 {
     if ($chat_id == $GLOBALS['adminChatId']) {
         $db = initDatabase();
-        // گرفتن لیست کاربرانی که تایید شده‌اند
-        $stmt = $db->query("SELECT chat_id FROM users WHERE approved = 1");
+        $stmt = $db->query("SELECT chat_id FROM users");
         while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
             sendMessage($row['chat_id'], $message, getMainMenuKeyboard($row['chat_id']));
         }
     }
 }
+
 
 function translateRoute($route) {
     // خواندن داده از فایل JSON
