@@ -1040,7 +1040,7 @@ function handleSetTripCommand($chat_id)
     ];
 
     setUserState($chat_id, 'SET_TRIP_ROUTE');
-    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (مثال: tehran-mashhad):", $inlineKeyboard);
+    sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (لطفا از گزینه‌ی جستجوی مسیر استفاده کنید یا فرمت نوشتن مسیر را دقت داشته باشید. مثال: tehran-mashhad یا تهران-مشهد):", $inlineKeyboard);
 }
 
 
@@ -1082,7 +1082,7 @@ function handleShowTripsCommand($chat_id)
 
 function handleSetTripRoute($chat_id, $text)
 {
-    $route = $text;
+    $route = findRoute($text);
     setUserState($chat_id, 'SET_TRIP_DATE', ['route' => $route]);
     sendMessage($chat_id, "لطفاً تاریخ رفت را وارد کنید (مثال: \u{200E}۱۴۰۳-۱۲-۲۳):");
 }
@@ -1432,7 +1432,7 @@ function handleRemoveTravelerCommand($chat_id, $text)
     $parts = explode(' ', $text);
     if (isset($parts[1]) && is_numeric($parts[1])) {
         removeTraveler($chat_id, (int) $parts[1]);
-        sendMessage($chat_id, "مسافر با ID {$parts[1]} حذف شد.");
+        sendMessage($chat_id, "مسافر با کد {$parts[1]} حذف شد.");
     } else {
         sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetraveler 1");
     }
@@ -1443,7 +1443,7 @@ function handleRemoveTravelerListCommand($chat_id, $text)
     $parts = explode(' ', $text);
     if (isset($parts[1]) && is_numeric($parts[1])) {
         removeTravelerList($chat_id, (int) $parts[1]);
-        sendMessage($chat_id, "لیست مسافران با ID {$parts[1]} حذف شد.");
+        sendMessage($chat_id, "لیست مسافران با کد {$parts[1]} حذف شد.");
     } else {
         sendMessage($chat_id, "فرمت دستور صحیح نیست. مثال:\n/removetravelerlist 1");
     }
@@ -1460,7 +1460,7 @@ function showUserTrips($chat_id)
 
     $message = "لیست سفرهای شما:\n";
     foreach ($trips as $trip) {
-        $message .= "ID: {$trip['id']}\n"
+        $message .= "کد: {$trip['id']}\n"
             . "مسیر: ". translateRoute($trip['route']) ."\n"
             . "تاریخ رفت: {$trip['date']}\n"
             . "نوع: " . getTripType($trip['type']) . "\n"
@@ -1503,9 +1503,9 @@ function removeUserTrip($chat_id, $trip_id)
     $result = $stmt->execute();
 
     if ($db->changes() > 0) {
-        sendMessage($chat_id, "سفر با ID: $trip_id با موفقیت حذف شد.");
+        sendMessage($chat_id, "سفر با کد: $trip_id با موفقیت حذف شد.");
     } else {
-        sendMessage($chat_id, "سفری با این ID پیدا نشد یا شما اجازه حذف آن را ندارید.");
+        sendMessage($chat_id, "سفری با این کد پیدا نشد یا شما اجازه حذف آن را ندارید.");
     }
 }
 
@@ -1822,7 +1822,7 @@ function cleanupOldFoodSelections($hours = 24)
     }
 }
 
-// یک تابع کمکی برای گرفتن قیمت غذا از ID آن
+// یک تابع کمکی برای گرفتن قیمت غذا از کد آن
 function getFoodPrice($food_id, $ticket_id, $passenger_count)
 {
     $foodOptions = getFoodOptions($ticket_id, $passenger_count);
@@ -2611,6 +2611,40 @@ function translateRoute($route) {
     $toFa = $cityMap[$to] ?? $to;
     
     return "$fromFa به $toFa";
+}
+
+function findRoute($route) {
+
+    $jsonFile = "train_cities_large.json";
+
+    // خواندن داده از فایل JSON
+    if (!file_exists($jsonFile)) {
+        return "JSON file not found";
+    }
+    
+    $jsonData = file_get_contents($jsonFile);
+    $cities = json_decode($jsonData, true);
+    
+    // تبدیل آرایه به associative array برای جستجوی سریع‌تر
+    $cityMap = [];
+    foreach ($cities as $city) {
+        $cityMap[$city['text']] = $city['code'];
+    }
+    
+    // جدا کردن مبدا و مقصد
+    $parts = explode('-', $route);
+    if (count($parts) !== 2) {
+        return "Invalid route format";
+    }
+    
+    $fromFa = $parts[0];
+    $toFa = $parts[1];
+    
+    // جایگزینی نام‌های کد شهر
+    $from = $cityMap[$fromFa] ?? $fromFa;
+    $to = $cityMap[$toFa] ?? $toFa;
+    
+    return "$from-$to";
 }
 
 ?>
