@@ -1074,7 +1074,7 @@ function handleShowTripsCommand($chat_id)
     ];
 
     if (empty($trips)) {
-        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.", $inlineKeyboard);
+        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید. برای تنظیم سفر روی گزینه‌ی تنظیم سفر کلیک کنید.", getMainMenuKeyboard($chat_id));
         return;
     }
 
