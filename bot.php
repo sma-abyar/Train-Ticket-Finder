@@ -387,7 +387,7 @@ function fetchTickets($userTrip)
                 updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
             }
         } elseif ($userTrip['no_ticket_notif'] == 0) {
-            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {" . translateRoute($userTrip['route']) . "} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
+            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر " . translateRoute($userTrip['route']) . " وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
             updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
         }
     } elseif ($userTrip['bad_data_notif'] == 0) {
@@ -507,11 +507,12 @@ if (isset($update['message']['web_app_data'])) {
                 $destination = $parts[1];
 
                 // ارسال پاسخ به کاربر
-                $message = "کد مسیر دریافت شد: " . translateRoute($routeCode) . "\n";
-                $message .= "تاریخ رزرو: " . $reservationDate;
+                $message = "مسیر دریافت شد: " . translateRoute($routeCode) . "\n";
+                $message .= "تاریخ:\n" . $reservationDate;
                 sendMessage($chat_id, $message);
 
-                handleSetTripRoute($chat_id, $routeCode);
+                // handleSetTripRoute($chat_id, $routeCode);
+                handleWebAppData($chat_id, $routeCode, $reservationDate);
             } else {
                 sendMessage($chat_id, "فرمت داده نامعتبر است.");
             }
@@ -1087,6 +1088,16 @@ function handleShowTripsCommand($chat_id)
     ];
 
     sendMessage($chat_id, $message, $inlineKeyboard);
+}
+
+function handleWebAppData($chat_id, $route, $date)
+{
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['route'] = $route;
+    $temp_data['date'] = $date;
+    $temp_data['return_date'] = $date;
+    setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
+    sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
 }
 
 function handleSetTripRoute($chat_id, $text)
