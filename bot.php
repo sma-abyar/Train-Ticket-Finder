@@ -496,36 +496,32 @@ $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
     $webAppData = json_decode($update['message']['web_app_data']['data'], true);
-    if (!isUserApproved($chat_id)) {
-        if (isset($webAppData['route']) && isset($webAppData['date'])) {
-            $routeCode = $webAppData['route'];
-            $reservationDate = $webAppData['date'];
+    if (isset($webAppData['route']) && isset($webAppData['date'])) {
+        $routeCode = $webAppData['route'];
+        $reservationDate = $webAppData['date'];
 
-            if (strpos($routeCode, '-') !== false) {
-                $parts = explode('-', $routeCode);
-                if (count($parts) >= 2) {
-                    $origin = $parts[0];
-                    $destination = $parts[1];
+        if (strpos($routeCode, '-') !== false) {
+            $parts = explode('-', $routeCode);
+            if (count($parts) >= 2) {
+                $origin = $parts[0];
+                $destination = $parts[1];
 
-                    // ارسال پاسخ به کاربر
-                    $message = "مسیر دریافت شد: " . translateRoute($routeCode) . "\n";
+                // ارسال پاسخ به کاربر
+                $message = "مسیر دریافت شد: " . translateRoute($routeCode) . "\n";
 
-                    $message .= "تاریخ:\n" . $reservationDate;
-                    sendMessage($chat_id, $message);
+                $message .= "تاریخ:\n" . $reservationDate;
+                sendMessage($chat_id, $message);
 
-                    // handleSetTripRoute($chat_id, $routeCode);
-                    handleWebAppData($chat_id, $routeCode, $reservationDate);
-                } else {
-                    sendMessage($chat_id, "فرمت داده نامعتبر است.");
-                }
+                // handleSetTripRoute($chat_id, $routeCode);
+                handleWebAppData($chat_id, $routeCode, $reservationDate);
             } else {
-                sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
+                sendMessage($chat_id, "فرمت داده نامعتبر است.");
             }
         } else {
-            sendMessage($chat_id, "داده دریافتی نامعتبر است.");
+            sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
         }
     } else {
-        sendMessage($chat_id, "حساب شما هنوز تأیید نشده است، برای درخواست تأیید لطفا مجدد ربات را /start کنید.");
+        sendMessage($chat_id, "داده دریافتی نامعتبر است.");
     }
 } elseif (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
