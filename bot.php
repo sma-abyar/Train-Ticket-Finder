@@ -897,7 +897,8 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'india_user_') === 0) {
         // Extract the chat_id from the callback data
         $user_chat_id = str_replace('india_user_', '', $data);
-        sendMessage($user_chat_id, "Hello dear! \n👉 If you are in India, check out this bot: \n@india_ticket_finder_bot");
+        // sendMessage($chat_id, text: "Hello dear! \n👉 If you are in India, check out this bot: \n[India Ticket Finder Bot](https://t.me/india_ticket_finder_bot)");
+        handleIndianUser($user_chat_id);
     } elseif ($data === 'add_trip') {
         // Start the trip addition process
         handleSetTripCommand($chat_id);
@@ -1003,7 +1004,9 @@ function handleStartCommand($chat_id, $update)
     sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
 }
 
-
+function handleIndianUser($chat_id){
+    sendMessage($chat_id, text: "Hello dear! \n👉 If you are in India, check out this bot: \n[India Ticket Finder Bot](https://t.me/india_ticket_finder_bot)");
+}
 function handleApproveCommand($chat_id, $text)
 {
     $parts = explode(' ', $text);
