@@ -388,9 +388,12 @@ function fetchTickets($userTrip)
                 updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
             }
         } elseif ($userTrip['no_ticket_notif'] == 0) {
-            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر " . translateRoute($userTrip['route']) . " وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
+            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر " . translateRoute($userTrip['route']) . " وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎 \n البته ...\nمی‌خوای  خودت هم یه دور اطلاعات سفرت رو چک کن شاید مسیر یا تاریخ اشتباه وارد شده باشه و نیاز باشه سریع درستش کنیم😊", getMainMenuKeyboard($userTrip['chat_id']));
             updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
         }
+    } elseif (isset($data['data']['status']) && $data['data']['status'] === 'raja_backup' && $userTrip['bad_data_notif'] == 0) {
+        sendMessage($userTrip['chat_id'], "دوست خوبم آب از سمت رجا قطعه😂 \nبچه‌های رجا مشغول به‌روزرسانی سامانه‌ی ریلی هستن.👷‍♂️ \nدرست شد لیست بلیط‌ها به صورت خودکار برات میاد، غمت نباشه😙");
+        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
     } elseif ($userTrip['bad_data_notif'] == 0) {
         // چاپ اطلاعات دریافتی از سرور
         $debug_info = "Debug Info:\n" .
