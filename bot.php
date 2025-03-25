@@ -387,7 +387,7 @@ function fetchTickets($userTrip)
                 updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
             }
         } elseif ($userTrip['no_ticket_notif'] == 0) {
-            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {". translateRoute($userTrip['route']) ."} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
+            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر {" . translateRoute($userTrip['route']) . "} وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎", getMainMenuKeyboard($userTrip['chat_id']));
             updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
         }
     } elseif ($userTrip['bad_data_notif'] == 0) {
@@ -494,23 +494,32 @@ function getUsernameFromMessage($message)
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
-    $routeCode = $update['message']['web_app_data']['data'];
+    $webAppData = json_decode($update['message']['web_app_data']['data'], true);
 
-    // پردازش کد مسیر
-    if (strpos($routeCode, '-') !== false) {
-        $parts = explode('-', $routeCode);
-        if (count($parts) >= 2) {
-            $origin = $parts[0];
-            $destination = $parts[1];
-            // ارسال پاسخ به کاربر
-            $message = "کد مسیر دریافت شد: ". translateRoute($routeCode) ."\n";
-            sendMessage($chat_id, $message);
-            handleSetTripRoute($chat_id, $routeCode);
+    if (isset($webAppData['route']) && isset($webAppData['date'])) {
+        $routeCode = $webAppData['route'];
+        $reservationDate = $webAppData['date'];
+
+        if (strpos($routeCode, '-') !== false) {
+            $parts = explode('-', $routeCode);
+            if (count($parts) >= 2) {
+                $origin = $parts[0];
+                $destination = $parts[1];
+
+                // ارسال پاسخ به کاربر
+                $message = "کد مسیر دریافت شد: " . translateRoute($routeCode) . "\n";
+                $message .= "تاریخ رزرو: " . $reservationDate;
+                sendMessage($chat_id, $message);
+
+                handleSetTripRoute($chat_id, $routeCode);
+            } else {
+                sendMessage($chat_id, "فرمت داده نامعتبر است.");
+            }
         } else {
-            sendMessage($chat_id, "فرمت داده نامعتبر است.");
+            sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
         }
     } else {
-        sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
+        sendMessage($chat_id, "داده دریافتی نامعتبر است.");
     }
 } elseif (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
@@ -896,7 +905,7 @@ function handleCallbackQuery($callback_query)
         $inlineKeyboard = ['inline_keyboard' => []];
         foreach ($trips as $trip) {
             $inlineKeyboard['inline_keyboard'][] = [
-                ['text' => "سفر  ". translateRoute($trip['route']) ." (". toPersianNumbers($trip['date']) .")", 'callback_data' => "remove_trip_{$trip['id']}"]
+                ['text' => "سفر  " . translateRoute($trip['route']) . " (" . toPersianNumbers($trip['date']) . ")", 'callback_data' => "remove_trip_{$trip['id']}"]
             ];
         }
         // Send the message with the inline buttons
@@ -1461,7 +1470,7 @@ function showUserTrips($chat_id)
     $message = "لیست سفرهای شما:\n";
     foreach ($trips as $trip) {
         $message .= "کد: {$trip['id']}\n"
-            . "مسیر: ". translateRoute($trip['route']) ."\n"
+            . "مسیر: " . translateRoute($trip['route']) . "\n"
             . "تاریخ رفت: {$trip['date']}\n"
             . "نوع: " . getTripType($trip['type']) . "\n"
             . "کوپه دربست: " . getTripCoupe($trip['coupe']) . "\n"
@@ -1978,10 +1987,10 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
     $postData = [
         'passengers' => $formattedPassengers,
         'user' => [
-            'fullName' => $user['fullName'],
-            'email' => $user['email'],
-            'mobileNumber' => '0' . $user['mobileNumber']
-        ],
+                'fullName' => $user['fullName'],
+                'email' => $user['email'],
+                'mobileNumber' => '0' . $user['mobileNumber']
+            ],
         'coupe' => $coupe,
         'safarmarketId' => ''
     ];
@@ -2501,8 +2510,8 @@ function handleInlineQuery($inlineQuery)
                 'title' => $route_name,
                 'description' => "کد مسیر: $route_key",
                 'input_message_content' => [
-                    'message_text' => $command_text
-                ]
+                        'message_text' => $command_text
+                    ]
             ];
         }
     }
@@ -2581,39 +2590,41 @@ function broadcastMessage($message, $chat_id)
 }
 
 
-function translateRoute($route) {
+function translateRoute($route)
+{
     // خواندن داده از فایل JSON
     $jsonFile = "train_cities_large.json";
     if (!file_exists($jsonFile)) {
         return "JSON file not found";
     }
-    
+
     $jsonData = file_get_contents($jsonFile);
     $cities = json_decode($jsonData, true);
-    
+
     // تبدیل آرایه به associative array برای جستجوی سریع‌تر
     $cityMap = [];
     foreach ($cities as $city) {
         $cityMap[$city['code']] = $city['text'];
     }
-    
+
     // جدا کردن مبدا و مقصد
     $parts = explode('-', $route);
     if (count($parts) !== 2) {
         return "Invalid route format";
     }
-    
+
     $from = $parts[0];
     $to = $parts[1];
-    
+
     // جایگزینی نام‌های فارسی
     $fromFa = $cityMap[$from] ?? $from;
     $toFa = $cityMap[$to] ?? $to;
-    
+
     return "$fromFa به $toFa";
 }
 
-function findRoute($route) {
+function findRoute($route)
+{
 
     $jsonFile = "train_cities_large.json";
 
@@ -2621,29 +2632,29 @@ function findRoute($route) {
     if (!file_exists($jsonFile)) {
         return "JSON file not found";
     }
-    
+
     $jsonData = file_get_contents($jsonFile);
     $cities = json_decode($jsonData, true);
-    
+
     // تبدیل آرایه به associative array برای جستجوی سریع‌تر
     $cityMap = [];
     foreach ($cities as $city) {
         $cityMap[$city['text']] = $city['code'];
     }
-    
+
     // جدا کردن مبدا و مقصد
     $parts = explode('-', $route);
     if (count($parts) !== 2) {
         return "Invalid route format";
     }
-    
+
     $fromFa = $parts[0];
     $toFa = $parts[1];
-    
+
     // جایگزینی نام‌های کد شهر
     $from = $cityMap[$fromFa] ?? $fromFa;
     $to = $cityMap[$toFa] ?? $toFa;
-    
+
     return "$from-$to";
 }
 
