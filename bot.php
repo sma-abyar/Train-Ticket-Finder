@@ -2392,7 +2392,7 @@ function removeTravelerList($chat_id, $list_id)
 function getMainMenuKeyboard($chat_id)
 {
     $keyboard = [
-        [['text' => 'تنظیم سفر'], ['text' => 'نمایش سفرها']],
+        [['text' => 'تنظیم سفر', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/telegram-route.html']], ['text' => 'نمایش سفرها']],
         [['text' => 'مسافران سابق'], ['text' => 'لیست‌های مسافران']],
         [['text' => 'اطلاعات شخصی']]
     ];

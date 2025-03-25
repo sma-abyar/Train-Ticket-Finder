@@ -3,6 +3,14 @@
 
 <head>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- افزودن jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- افزودن استایل و اسکریپت تاریخ‌گیر فارسی -->
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>انتخاب مسیر قطار</title>
@@ -31,7 +39,6 @@
             font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
         }
 
-
         body {
             background-color: var(--background-color);
             color: var(--text-color);
@@ -58,6 +65,15 @@
             font-size: 26px;
         }
 
+        .form-row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
@@ -68,7 +84,8 @@
             font-weight: bold;
         }
 
-        select {
+        select,
+        input[type="text"].datepicker {
             width: 100%;
             padding: 12px;
             border: 1px solid var(--primary-color);
@@ -80,7 +97,8 @@
             color: var(--text-color);
         }
 
-        select:focus {
+        select:focus,
+        input[type="text"].datepicker:focus {
             border-color: var(--primary-color);
             outline: none;
         }
@@ -152,111 +170,201 @@
             h1 {
                 font-size: 22px;
             }
+
+            .form-row {
+                flex-direction: column;
+            }
         }
+
+        /* سفارشی‌سازی استایل تقویم فارسی */
+        .persian-datepicker {
+            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
+        }
+
+        .persian-datepicker .pdp-header {
+            background-color: var(--primary-color) !important;
+            color: var(--card-color) !important;
+        }
+
+        .persian-datepicker .pdp-nav {
+            color: var(--text-color) !important;
+        }
+
+        .persian-datepicker .pdp-month {
+            color: var(--primary-color) !important;
+        }
+
+        .persian-datepicker .pdp-day,
+        .persian-datepicker .pdp-day:hover {
+            color: var(--text-color) !important;
+        }
+
+        .persian-datepicker .pdp-day.selected {
+            background-color: var(--secondary-color) !important;
+            color: var(--card-color) !important;
+        }
+
+        .persian-datepicker .pdp-footer {
+            background-color: var(--background-color) !important;
+        }
+
+        /* سفارشی‌سازی سبک تقویم: محدود کردن عرض و تنظیم موقعیت */
+        .persian-datepicker {
+            max-width: 320px !important;
+            /* محدود کردن عرض تقویم */
+            margin: 10px auto !important;
+            /* مرکز کردن تقویم در صفحه */
+            position: absolute !important;
+            /* جلوگیری از اشغال کل صفحه */
+        }
+
+        /* در صورت نیاز، سبک‌های داخلی تقویم رو هم تنظیم کنید */
+        .persian-datepicker .pdp-header,
+        .persian-datepicker .pdp-nav,
+        .persian-datepicker .pdp-month,
+        .persian-datepicker .pdp-day,
+        .persian-datepicker .pdp-footer {
+            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif !important;
+        }
+
     </style>
 </head>
 
 <body>
     <div class="container">
         <h1>انتخاب مسیر قطار</h1>
-        <div class="form-group">
-            <label for="origin">مبدأ:</label>
-            <select id="origin">
-                <option value="">انتخاب مبدأ</option>
-            </select>
+
+        <!-- ردیف انتخاب مبدأ و مقصد -->
+        <div class="form-row">
+            <div class="form-group">
+                <label for="origin">مبدأ:</label>
+                <select id="origin">
+                    <option value="">انتخاب مبدأ</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="destination">مقصد:</label>
+                <select id="destination">
+                    <option value="">انتخاب مقصد</option>
+                </select>
+            </div>
         </div>
+
+        <!-- انتخاب تاریخ رزرو -->
         <div class="form-group">
-            <label for="destination">مقصد:</label>
-            <select id="destination">
-                <option value="">انتخاب مقصد</option>
-            </select>
+            <label for="reservation-date">تاریخ رزرو:</label>
+            <input type="text" id="reservation-date" class="datepicker" placeholder="انتخاب تاریخ">
         </div>
+
         <div class="result" id="result-box">
-            <p>کد مسیر:</p>
+            <p>کد مسیر و تاریخ:</p>
             <div class="route-code">
-                <span id="route-code">لطفاً مبدأ و مقصد را انتخاب کنید</span>
-                <button id="copy-btn" class="copy-btn">بَرو بَریم</button>
+                <span id="route-code">لطفاً مبدأ، مقصد و تاریخ را انتخاب کنید</span>
+                <button id="copy-btn" class="copy-btn" disabled>بَرو بَریم</button>
             </div>
         </div>
     </div>
 
-    <div id="copy-alert" class="alert">کد مسیر کپی شد!</div>
+    <div id="copy-alert" class="alert">اطلاعات ارسال شد!</div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        console.log(tg.themeParams);
+        const bl = window.Telegram.WebApp;
+        console.log(bl.themeParams);
         document.addEventListener('DOMContentLoaded', function () {
             const originSelect = document.getElementById('origin');
             const destinationSelect = document.getElementById('destination');
+            const dateInput = document.getElementById('reservation-date');
             const routeCodeSpan = document.getElementById('route-code');
             const copyBtn = document.getElementById('copy-btn');
             const copyAlert = document.getElementById('copy-alert');
 
-            // به‌روزرسانی کد مسیر هنگام تغییر انتخاب‌ها
-            function updateRouteCode() {
+            // به‌روزرسانی نمایش اطلاعات (مسیر و تاریخ)
+            function updateDisplay() {
                 const origin = originSelect.value;
                 const destination = destinationSelect.value;
+                const reservationDate = dateInput.value;
 
-                if (origin && destination) {
-                    if (origin === destination) {
-                        routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
-                        copyBtn.disabled = true;
-                    } else {
-                        const routeCode = `${origin}-${destination}`;
-                        routeCodeSpan.textContent = routeCode;
-                        copyBtn.disabled = false;
-                    }
-                } else {
-                    routeCodeSpan.textContent = "لطفاً مبدأ و مقصد را انتخاب کنید";
+                if (!origin || !destination || !reservationDate) {
+                    routeCodeSpan.textContent = "لطفاً مبدأ، مقصد و تاریخ را انتخاب کنید";
                     copyBtn.disabled = true;
+                    return;
                 }
+
+                if (origin === destination) {
+                    routeCodeSpan.textContent = "مبدأ و مقصد نمی‌توانند یکسان باشند";
+                    copyBtn.disabled = true;
+                    return;
+                }
+
+                const routeCode = `${origin}-${destination}`;
+                routeCodeSpan.textContent = `${routeCode} | تاریخ: ${reservationDate}`;
+                copyBtn.disabled = false;
             }
 
-            function applyTelegramTheme() {
-                if (tg && tg.themeParams) {
-                    document.documentElement.style.setProperty('--primary-color', tg.themeParams.button_color || '#3498db');
-                    document.documentElement.style.setProperty('--secondary-color', tg.themeParams.button_text_color || '#2980b9');
-                    document.documentElement.style.setProperty('--background-color', tg.themeParams.bg_color || '#f5f5f5');
-                    document.documentElement.style.setProperty('--card-color', tg.themeParams.secondary_bg_color || '#ffffff');
-                    document.documentElement.style.setProperty('--text-color', tg.themeParams.text_color || '#333333');
+            function applyBaleTheme() {
+                if (bl && bl.themeParams) {
+                    document.documentElement.style.setProperty('--primary-color', bl.themeParams.button_color || '#3498db');
+                    document.documentElement.style.setProperty('--secondary-color', bl.themeParams.button_text_color || '#2980b9');
+                    document.documentElement.style.setProperty('--background-color', bl.themeParams.bg_color || '#f5f5f5');
+                    document.documentElement.style.setProperty('--card-color', bl.themeParams.secondary_bg_color || '#ffffff');
+                    document.documentElement.style.setProperty('--text-color', bl.themeParams.text_color || '#333333');
                 }
             }
-            applyTelegramTheme();
+            applyBaleTheme();
 
-            originSelect.addEventListener('change', updateRouteCode);
-            destinationSelect.addEventListener('change', updateRouteCode);
+            originSelect.addEventListener('change', updateDisplay);
+            destinationSelect.addEventListener('change', updateDisplay);
+            dateInput.addEventListener('change', updateDisplay);
 
-            // کپی کردن کد مسیر
-            // جایگزین کد فعلی دکمه کپی
-            copyBtn.addEventListener('click', function () {
-                const routeCode = routeCodeSpan.textContent;
-                if (routeCode && routeCode !== "لطفاً مبدأ و مقصد را انتخاب کنید" && routeCode !== "مبدأ و مقصد نمی‌توانند یکسان باشند") {
-                    // اطمینان از اینکه داده یک رشته ساده است
-                    const simpleString = String(routeCode).trim();
-                    console.log('Sending data:', simpleString);
-
-                    try {
-                        tg.sendData(simpleString);
-                        console.log('Data sent successfully');
-                    } catch (error) {
-                        console.error('Error sending data:', error);
-                    }
-
-                    // نمایش پیام و بستن با تأخیر
-                    copyAlert.textContent = "کد مسیر ارسال شد!";
-                    copyAlert.style.opacity = '1';
-                    setTimeout(() => {
-                        copyAlert.style.opacity = '0';
-                        setTimeout(() => tg.close(), 1000);
-                    }, 1500);
+            // راه‌اندازی تاریخ‌گیر فارسی با فرمت yyyy-mm-dd
+            $(dateInput).persianDatepicker({
+                format: 'YYYY-MM-DD',
+                autoClose: true,
+                initialValue: false,
+                onSelect: function (unixDate) {
+                    const selectedDate = new persianDate(unixDate).format('YYYY-MM-DD');
+                    dateInput.value = selectedDate;
+                    updateDisplay();
                 }
             });
 
-            // خواندن داده‌ها فقط از فایل JSON خارجی
+            // ارسال اطلاعات (مسیر به همراه تاریخ)
+            copyBtn.addEventListener('click', function () {
+                const origin = originSelect.value;
+                const destination = destinationSelect.value;
+                const reservationDate = dateInput.value;
+
+                if (!origin || !destination || !reservationDate ||
+                    origin === destination ||
+                    routeCodeSpan.textContent.includes("لطفاً")) {
+                    return;
+                }
+
+                const routeCode = `${origin}-${destination}`;
+                const dataObj = { route: routeCode, date: reservationDate };
+                const dataStr = JSON.stringify(dataObj);
+                console.log('Sending data:', dataStr);
+
+                try {
+                    bl.sendData(dataStr);
+                    console.log('Data sent successfully');
+                } catch (error) {
+                    console.error('Error sending data:', error);
+                }
+
+                // نمایش پیام و بستن با تأخیر
+                copyAlert.textContent = "اطلاعات ارسال شد!";
+                copyAlert.style.opacity = '1';
+                setTimeout(() => {
+                    copyAlert.style.opacity = '0';
+                    setTimeout(() => bl.close(), 1000);
+                }, 1500);
+            });
+
+            // بارگذاری اطلاعات شهرها از فایل JSON
             fetch('train_cities_large.json')
                 .then(response => response.json())
                 .then(cities => {
-                    // پر کردن منوهای کشویی با اطلاعات شهرها
                     cities.forEach(city => {
                         const originOption = document.createElement('option');
                         originOption.value = city.code;
