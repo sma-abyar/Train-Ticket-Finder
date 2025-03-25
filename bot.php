@@ -495,23 +495,33 @@ function getUsernameFromMessage($message)
 $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
-    $routeCode = $update['message']['web_app_data']['data'];
-    
-    // پردازش کد مسیر
-    if (strpos($routeCode, '-') !== false) {
-        $parts = explode('-', $routeCode);
-        if (count($parts) >= 2) {
-            $origin = $parts[0];
-            $destination = $parts[1];
-            // ارسال پاسخ به کاربر
-            $message = "کد مسیر دریافت شد: $routeCode\n";           
-            sendMessage($chat_id, $message);
-            handleSetTripRoute($chat_id, $routeCode);
+    $webAppData = json_decode($update['message']['web_app_data']['data'], true);
+
+    if (isset($webAppData['route']) && isset($webAppData['date'])) {
+        $routeCode = $webAppData['route'];
+        $reservationDate = $webAppData['date'];
+
+        if (strpos($routeCode, '-') !== false) {
+            $parts = explode('-', $routeCode);
+            if (count($parts) >= 2) {
+                $origin = $parts[0];
+                $destination = $parts[1];
+
+                // ارسال پاسخ به کاربر
+                $message = "مسیر دریافت شد: " . $routeCode . "\n";
+                $message .= "تاریخ:\n" . $reservationDate;
+                sendMessage($chat_id, $message);
+
+                // handleSetTripRoute($chat_id, $routeCode);
+                handleWebAppData($chat_id, $routeCode, $reservationDate);
+            } else {
+                sendMessage($chat_id, "فرمت داده نامعتبر است.");
+            }
         } else {
-            sendMessage($chat_id, "فرمت داده نامعتبر است.");
+            sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
         }
     } else {
-        sendMessage($chat_id, "داده دریافتی: $routeCode - فرمت داده شامل خط تیره نیست.");
+        sendMessage($chat_id, "داده دریافتی نامعتبر است.");
     }
 } elseif (isset($update['inline_query'])) {
     handleInlineQuery($update['inline_query']);
@@ -1100,6 +1110,16 @@ function handleSetTripDate($chat_id, $text)
 {
     $date = $text;
     $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['date'] = $date;
+    $temp_data['return_date'] = $date;
+    setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
+    sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
+}
+
+function handleWebAppData($chat_id, $route, $date)
+{
+    $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['route'] = $route;
     $temp_data['date'] = $date;
     $temp_data['return_date'] = $date;
     setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
