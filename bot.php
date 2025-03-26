@@ -394,6 +394,9 @@ function fetchTickets($userTrip)
     } elseif (isset($data['data']['status']) && $data['data']['status'] === 'raja_backup' && $userTrip['bad_data_notif'] == 0) {
         sendMessage($userTrip['chat_id'], "دوست خوبم آب از سمت رجا قطعه😂 \nبچه‌های رجا مشغول به‌روزرسانی سامانه‌ی ریلی هستن.👷‍♂️ \nدرست شد لیست بلیط‌ها به صورت خودکار برات میاد، غمت نباشه😙");
         updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
+    } elseif (isset($data['data']['status']) && $data['data']['status'] === 'failed' && $userTrip['bad_data_notif'] == 0) {
+        sendMessage($userTrip['chat_id'], "اوه اوه اوه! آب قند بیارین بچه‌های رجا از حال رفتن😂 \nبه دلیل اضافه شدن بلیط تاریخ‌های جدید، فعلا بلیط‌ها رو در اختیار هیچ سامانه‌ای قرار ندادن. \nدرست شد لیست بلیط‌ها که برای همه باز شد، به صورت خودکار برات میاد، حواسمون بهت هست😙");
+        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
     } elseif ($userTrip['bad_data_notif'] == 0) {
         // چاپ اطلاعات دریافتی از سرور
         $debug_info = "Debug Info:\n" .
@@ -1004,7 +1007,8 @@ function handleStartCommand($chat_id, $update)
     sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
 }
 
-function handleIndianUser($chat_id){
+function handleIndianUser($chat_id)
+{
     sendMessage($chat_id, text: "Hello dear! \n👉 If you are in India, check out this bot: \n[India Ticket Finder Bot](https://t.me/india_ticket_finder_bot)");
 }
 function handleApproveCommand($chat_id, $text)
