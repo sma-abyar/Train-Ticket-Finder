@@ -1102,8 +1102,8 @@ function handleShowTripsCommand($chat_id)
 function handleWebAppData($chat_id, $route, $date)
 {
     $temp_data = getUserState($chat_id)['temp_data'];
+    $temp_data['route'] = $route;
     $temp_data['date'] = toEnglishNumbers($date);
-    $temp_data['date'] = $date;
     $temp_data['return_date'] = $date;
     setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
     sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
