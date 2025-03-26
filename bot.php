@@ -1053,13 +1053,11 @@ function handleSetTripCommand($chat_id)
                 // دکمه ثبت مسیر (با callback_data)
                 ['text' => 'مشهد به تهران', 'callback_data' => 'trip_route_mashhad-tehran'],
                 // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
-                ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
-            ],
-            [
-                ['text' => 'لیست کامل همه‌ی شهرها', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/telegram-route.html']]            ]
+                ['text' => 'استفاده از مینی‌اپ', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/bale-route.html']]
+            ]
         ]
     ];
-    
+
     setUserState($chat_id, 'SET_TRIP_ROUTE');
     sendMessage($chat_id, "لطفاً مسیر سفر را وارد کنید (لطفا از گزینه‌ی جستجوی مسیر استفاده کنید یا فرمت نوشتن مسیر را دقت داشته باشید. مثال: tehran-mashhad یا تهران-مشهد):", $inlineKeyboard);
 }
@@ -1104,7 +1102,7 @@ function handleShowTripsCommand($chat_id)
 function handleWebAppData($chat_id, $route, $date)
 {
     $temp_data = getUserState($chat_id)['temp_data'];
-    $temp_data['route'] = $route;
+    $temp_data['date'] = toEnglishNumbers($date);
     $temp_data['date'] = $date;
     $temp_data['return_date'] = $date;
     setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
@@ -2009,10 +2007,10 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
     $postData = [
         'passengers' => $formattedPassengers,
         'user' => [
-                'fullName' => $user['fullName'],
-                'email' => $user['email'],
-                'mobileNumber' => '0' . $user['mobileNumber']
-            ],
+            'fullName' => $user['fullName'],
+            'email' => $user['email'],
+            'mobileNumber' => '0' . $user['mobileNumber']
+        ],
         'coupe' => $coupe,
         'safarmarketId' => ''
     ];
@@ -2354,7 +2352,7 @@ function removeTravelerList($chat_id, $list_id)
 function getMainMenuKeyboard($chat_id)
 {
     $keyboard = [
-        [['text' => 'تنظیم سفر', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/telegram-route.html']], ['text' => 'نمایش سفرها']],
+        [['text' => 'تنظیم سفر', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/bale-route.html']], ['text' => 'نمایش سفرها']],
         [['text' => 'مسافران سابق'], ['text' => 'لیست‌های مسافران']],
         [['text' => 'اطلاعات شخصی']]
     ];
@@ -2532,8 +2530,8 @@ function handleInlineQuery($inlineQuery)
                 'title' => $route_name,
                 'description' => "کد مسیر: $route_key",
                 'input_message_content' => [
-                        'message_text' => $command_text
-                    ]
+                    'message_text' => $command_text
+                ]
             ];
         }
     }
@@ -2604,7 +2602,7 @@ function broadcastMessage($message, $chat_id)
 {
     if ($chat_id == $GLOBALS['adminChatId']) {
         $db = initDatabase();
-        $stmt = $db->query("SELECT chat_id FROM users WHERE approved = 1");
+        $stmt = $db->query("SELECT chat_id FROM users");
         while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
             sendMessage($row['chat_id'], $message, getMainMenuKeyboard($row['chat_id']));
         }
