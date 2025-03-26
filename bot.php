@@ -856,14 +856,16 @@ function handleCallbackQuery($callback_query)
             ];
         }
         // Send the message with the inline buttons
-        sendMessage($chat_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
+        editMessage($chat_id, $message_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
+        // sendMessage($chat_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
     } elseif (strpos($data, 'remove_traveler_') === 0) {
         // Extract the traveler ID from the callback data
         $traveler_id = str_replace('remove_traveler_', '', $data);
         // Call the function to remove the traveler
         removeTraveler($chat_id, $traveler_id);
         // Notify the user
-        sendMessage($chat_id, "مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
+        editMessage($chat_id, $message_id,"مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
+        // sendMessage($chat_id, "مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
     } elseif ($data === 'add_traveler_list') {
         // Start the traveler list addition process
         handleAddTravelerListCommand($chat_id);
@@ -2268,11 +2270,14 @@ function answerCallbackQuery($callback_query_id, $text, $show_alert = false)
 }
 
 // برای راحتی کار، یک تابع هم برای آپدیت پیام‌های قبلی می‌سازیم
-function editMessageText($chat_id, $message_id, $text, $reply_markup = null)
+function editMessage($chat_id, $message_id, $text, $reply_markup = null, $isPersian = true)
 {
-    global $telegram_api;
+    $botToken = $GLOBALS['botToken'];
+    $url = "https://api.telegram.org/bot$botToken/editMessageText";
 
-    $url = $telegram_api . "/editMessageText";
+    if ($isPersian) {
+        $text = toPersianNumbers($text);
+    }
 
     $postData = [
         'chat_id' => $chat_id,
@@ -2289,12 +2294,13 @@ function editMessageText($chat_id, $message_id, $text, $reply_markup = null)
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
 
     $response = curl_exec($ch);
     curl_close($ch);
 
-    return json_decode($response, true);
+    $responseArray = json_decode($response, true);
+    return $responseArray['ok'] ?? false;
 }
 
 // تابع کمکی برای تبدیل نوع مسافر به متن
