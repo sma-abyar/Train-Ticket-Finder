@@ -1,4 +1,6 @@
 <?php
+
+require 'bot.php';
 // اتصال به دیتابیس صف پیام‌ها
 $queueDb = initQueueDatabase();
 
