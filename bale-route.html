@@ -5,11 +5,10 @@
     <script src="https://tapi.bale.ai/miniapp.js?2"></script>
     <!-- افزودن jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- افزودن استایل و اسکریپت تاریخ‌گیر فارسی -->
-    <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
+    <!-- افزودن استایل و اسکریپت تاریخ‌گیر جدید -->
+    <link rel="stylesheet" href="https://unpkg.com/persian-datepicker@latest/dist/css/persian-datepicker.min.css">
+    <script src="https://unpkg.com/persian-date@latest/dist/persian-date.min.js"></script>
+    <script src="https://unpkg.com/persian-datepicker@latest/dist/js/persian-datepicker.min.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -177,78 +176,59 @@
         }
 
         /* سفارشی‌سازی استایل تقویم فارسی */
-        .persian-datepicker {
-            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
-        }
-
-        .persian-datepicker .pdp-header {
-            background-color: var(--primary-color) !important;
-            color: var(--card-color) !important;
-        }
-
-        .persian-datepicker .pdp-nav {
-            color: var(--text-color) !important;
-        }
-
-        .persian-datepicker .pdp-month {
-            color: var(--primary-color) !important;
-        }
-
-        .persian-datepicker .pdp-day,
-        .persian-datepicker .pdp-day:hover {
-            color: var(--text-color) !important;
-        }
-
-        .persian-datepicker .pdp-day.selected {
-            background-color: var(--secondary-color) !important;
-            color: var(--card-color) !important;
-        }
-
-        .persian-datepicker .pdp-footer {
-            background-color: var(--background-color) !important;
-        }
-
-        /* سفارشی‌سازی سبک تقویم: محدود کردن عرض و تنظیم موقعیت */
-        .persian-datepicker {
-            max-width: 320px !important;
-            /* محدود کردن عرض تقویم */
-            margin: 10px auto !important;
-            /* مرکز کردن تقویم در صفحه */
-            position: absolute !important;
-            /* جلوگیری از اشغال کل صفحه */
-        }
-
-        /* در صورت نیاز، سبک‌های داخلی تقویم رو هم تنظیم کنید */
-        .persian-datepicker .pdp-header,
-        .persian-datepicker .pdp-nav,
-        .persian-datepicker .pdp-month,
-        .persian-datepicker .pdp-day,
-        .persian-datepicker .pdp-footer {
-            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif !important;
-        }
-
         .datepicker-plot-area {
-            background-color: var(--background-color) !important;
+            font-family: 'Vazirmatn', Tahoma, Arial, sans-serif !important;
+            background-color: var(--card-color) !important;
+            border-radius: 8px !important;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1) !important;
+            max-width: 320px !important;
+            margin: 10px auto !important;
+            position: absolute !important;
+        }
+
+        .datepicker-plot-area .datepicker-header {
+            background-color: var(--primary-color) !important;
+            color: white !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 10px !important;
+        }
+
+        .datepicker-plot-area .datepicker-day-view .table-days td span.selected {
+            background-color: var(--primary-color) !important;
+            color: white !important;
+            border-radius: 6px !important;
+        }
+
+        .datepicker-plot-area .datepicker-day-view .table-days td span:hover {
+            background-color: rgba(52, 152, 219, 0.2) !important;
+            border-radius: 6px !important;
+        }
+
+        .datepicker-plot-area .datepicker-navigator .pwt-btn-switch {
+            color: var(--text-color) !important;
+            font-weight: bold !important;
+        }
+
+        .datepicker-plot-area .toolbox .pwt-btn-submit,
+        .datepicker-plot-area .toolbox .pwt-btn-calendar,
+        .datepicker-plot-area .toolbox .pwt-btn-today {
+            background-color: var(--primary-color) !important;
+            color: white !important;
+            border-radius: 4px !important;
+            font-size: 14px !important;
+            padding: 5px 10px !important;
         }
 
         .datepicker-plot-area .datepicker-day-view .table-days td span,
         .datepicker-plot-area .datepicker-year-view .year-item,
         .datepicker-plot-area .datepicker-month-view .month-item {
-            background-color: var(--background-color) !important;
-            color: var(--text-color);
-        }
-
-        .datepicker-plot-area .toolbox .pwt-btn-submit,
-        .datepicker-plot-area .toolbox .pwt-btn-calendar,
-        .datepicker-plot-area .toolbox .pwt-btn-today,
-        .datepicker-plot-area .datepicker-navigator .pwt-btn-switch  {
-            color: var(--text-color);
+            color: var(--text-color) !important;
+            border-radius: 4px !important;
         }
 
         .datepicker-plot-area .datepicker-day-view .table-days td span.other-month {
-            color: #ccc;
+            color: #ccc !important;
         }
-
     </style>
 </head>
 
@@ -300,6 +280,10 @@
             const copyBtn = document.getElementById('copy-btn');
             const copyAlert = document.getElementById('copy-alert');
 
+            // تنظیم پیکربندی تاریخ شمسی
+            window.persianDate.toLocale('fa');
+            window.persianDate.toCalendar('persian');
+
             // به‌روزرسانی نمایش اطلاعات (مسیر و تاریخ)
             function updateDisplay() {
                 const origin = originSelect.value;
@@ -338,15 +322,43 @@
             destinationSelect.addEventListener('change', updateDisplay);
             dateInput.addEventListener('change', updateDisplay);
 
-            // راه‌اندازی تاریخ‌گیر فارسی با فرمت yyyy-mm-dd
-            $(dateInput).persianDatepicker({
+            // راه‌اندازی تاریخ‌گیر فارسی با استفاده از pDatepicker
+            $(dateInput).pDatepicker({
                 format: 'YYYY-MM-DD',
                 autoClose: true,
-                initialValue: false,
-                onSelect: function (unixDate) {
-                    const selectedDate = new persianDate(unixDate).format('YYYY-MM-DD');
+                initialValueType: 'persian',
+                calendarType: 'persian',
+                onlySelectOnDate: true,
+                responsive: true,
+                onSelect: function (unix) {
+                    // تبدیل تاریخ به فرمت مورد نظر (YYYY-MM-DD)
+                    const pDate = new persianDate(unix);
+                    const selectedDate = pDate.format('YYYY-MM-DD');
                     dateInput.value = selectedDate;
                     updateDisplay();
+                },
+                toolbox: {
+                    calendarSwitch: {
+                        enabled: false
+                    },
+                    submitButton: {
+                        enabled: true,
+                        text: {
+                            fa: 'تایید'
+                        }
+                    },
+                    todayButton: {
+                        enabled: true,
+                        text: {
+                            fa: 'امروز'
+                        }
+                    }
+                },
+                navigator: {
+                    enabled: true,
+                    scroll: {
+                        enabled: true
+                    }
                 }
             });
 
