@@ -158,6 +158,26 @@ function initDatabase()
     return $db;
 }
 
+function initQueueDatabase()
+{
+    $queueDbPath = __DIR__ . '/queue.db'; // مسیر دیتابیس جدید
+    $db = new SQLite3($queueDbPath);
+
+    // تنظیمات برای بهینه‌سازی دسترسی همزمان
+    $db->busyTimeout(5000);
+    $db->exec('PRAGMA journal_mode = WAL;');
+
+    // ساخت جدول صف پیام‌ها
+    $db->exec("CREATE TABLE IF NOT EXISTS message_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        sent INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    return $db;
+}
 
 function setUserState($chat_id, $state, $temp_data = null)
 {
@@ -2601,11 +2621,30 @@ function getAvailableRoutesFromJson($jsonPath)
 function broadcastMessage($message, $chat_id)
 {
     if ($chat_id == $GLOBALS['adminChatId']) {
+        // اتصال به دیتابیس اصلی برای گرفتن کاربران تایید شده
         $db = initDatabase();
+
+        // دریافت chat_id های تایید شده
         $stmt = $db->query("SELECT chat_id FROM users");
+
+        // اتصال به دیتابیس صف پیام‌ها
+        $queueDb = initQueueDatabase();  // اتصال به دیتابیس جدید
         while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
-            sendMessage($row['chat_id'], $message, getMainMenuKeyboard($row['chat_id']));
+            $chatId = $row['chat_id'];
+
+            // درج پیام‌ها به جدول صف در دیتابیس جدید
+            $insert = $queueDb->prepare("INSERT INTO message_queue (chat_id, message, sent) VALUES (:chat_id, :message, 0)");
+            $insert->bindValue(':chat_id', $chatId, SQLITE3_TEXT);  // تغییر نوع به SQLITE3_TEXT چون chat_id یک رشته است
+            $insert->bindValue(':message', $message, SQLITE3_TEXT);
+            $insert->execute();
         }
+
+        // بستن دیتابیس‌ها
+        $db->close();
+        $queueDb->close();
+
+        // پیام تایید به ادمین
+        sendMessage($chat_id, "پیام‌ها در صف ارسال قرار گرفتند و به مرور ارسال خواهند شد.");
     }
 }
 
