@@ -8,7 +8,7 @@
     <!-- افزودن استایل و اسکریپت تاریخ‌گیر جدید -->
     <link rel="stylesheet" href="https://unpkg.com/persian-datepicker@latest/dist/css/persian-datepicker.min.css">
     <script src="https://unpkg.com/persian-date@latest/dist/persian-date.min.js"></script>
-    <script src="https://unpkg.com/persian-datepicker@latest/dist/js/persian-datepicker.min.js"></script>
+    <script src="https://botstorage.s3.ir-thr-at1.arvanstorage.ir/persian-datepicker.min.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -280,9 +280,9 @@
             const copyBtn = document.getElementById('copy-btn');
             const copyAlert = document.getElementById('copy-alert');
 
-            // تنظیم پیکربندی تاریخ شمسی
             window.persianDate.toLocale('fa');
             window.persianDate.toCalendar('persian');
+            window.persianDate.toLeapYearMode('astronomical');
 
             // به‌روزرسانی نمایش اطلاعات (مسیر و تاریخ)
             function updateDisplay() {
