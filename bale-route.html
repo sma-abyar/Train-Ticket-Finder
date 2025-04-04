@@ -229,6 +229,30 @@
         .datepicker-plot-area .datepicker-day-view .table-days td span.other-month {
             color: #ccc !important;
         }
+
+        .datepicker-plot-area .datepicker-day-view .table-days td.selected span,
+        .datepicker-plot-area .datepicker-year-view .year-item.selected,
+        .datepicker-plot-area .datepicker-month-view .month-item.selected {
+            background-color: var(--primary-color) !important;
+            color: var(--secondary-color) !important;
+            border: none;
+            text-shadow: 1px 1px 1px #000;
+        }
+
+        .datepicker-plot-area .datepicker-day-view .table-days td.today span {
+            background-color: var(--background-color);
+            color: var(--text-color) !important;
+            border: 0;
+            text-shadow: none;
+        }
+
+        .datepicker-plot-area .datepicker-day-view .table-days td span,
+        .datepicker-plot-area .datepicker-year-view .year-item,
+        .datepicker-plot-area .datepicker-month-view .month-item {
+            background-color: var(--background-color);
+            border: 0;
+            text-shadow: none;
+        }
     </style>
 </head>
 
