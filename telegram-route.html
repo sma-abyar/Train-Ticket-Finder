@@ -9,7 +9,7 @@
     <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
     <script src="https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
+    <script src="https://botstorage.s3.ir-thr-at1.arvanstorage.ir/persian-datepicker.min.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -277,6 +277,8 @@
             const routeCodeSpan = document.getElementById('route-code');
             const copyBtn = document.getElementById('copy-btn');
             const copyAlert = document.getElementById('copy-alert');
+
+            // window.persianDate.toLeapYearMode('algorithmic');
 
             // به‌روزرسانی نمایش اطلاعات (مسیر و تاریخ)
             function updateDisplay() {
