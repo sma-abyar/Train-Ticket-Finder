@@ -362,11 +362,26 @@ function fetchTickets($userTrip)
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postFields));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "accept: application/json, text/javascript, */*; q=0.01",
+        "accept-language: en-US,en;q=0.9,fa-IR;q=0.8,fa;q=0.7",
         "Content-Type: application/x-www-form-urlencoded; charset=UTF-8",
+        "origin: https://ghasedak24.com",
+        "priority: u=1, i",
         "Referer: https://ghasedak24.com/train-ticket",
-        "X-Requested-With: XMLHttpRequest",
-        "User-Agent: Mozilla/5.0"
+        "sec-ch-ua: \"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+        "sec-ch-ua-mobile: ?0",
+        "sec-ch-ua-platform: \"Windows\"",
+        "sec-fetch-dest: empty",
+        "sec-fetch-mode: cors",
+        "sec-fetch-site: same-origin",
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "X-Requested-With: XMLHttpRequest"
     ]);
+    
+    // اضافه کردن کوکی‌ها اگر نیاز باشد
+    $cookies = '_ga=GA1.1.628980040.1702320559; _ga_3KFTE6V0ZT=GS1.1.1721872044.6.1.1721872108.60.0.571740021; zbl_utm=ZBLU2FsdGVkX1/JN/N48KoyeiVP2HgejyTU/QN3FxhCW3mEMCgIlt/6If/pK7EmvMfyWqWzybRSaqvcVhfjlLb/4PtIsyepQgtdI0dtrQKXOfwXzpItzekh7iy5g4PEpbS31Iien6nzKq0O2o6tqMgnMA==; zbl_anonymous_id=ZBLU2FsdGVkX199uBlXZn6C4Lbp+A+detpONWSt/guac0o3oV9ZjfaljODKyzt0h/Tp; zbl_user=ZBLU2FsdGVkX19iWmwbcmrvmh3oQzB1a4EGsq07o3wizzIuurL2a21nFXgQsjzrggF7yUL7BaF7/NvffLN88Wzs6PLIwtxIthmjNoLyr+itMDw=; utm=%7B%22source%22%3A%22direct%22%2C%22medium%22%3A%22none%22%2C%22campaign_name%22%3A%22%22%7D; ClientId=ZFy0vZOg1YRv-Ey8Ohi0Fz0lQz7eGD41K35R5bRioT71vn8Q; zblClientAnonymousId=WRLeVbCFn782MyrgDracK; _ga_R2DNY8X9DD=GS2.1.s1747662312$o9$g1$t1747662484$j0$l0$h0; s=a%3A5%3A%7Bs%3A10%3A%22session_id%22%3Bs%3A32%3A%22cf86cb7ae34cbff4e21e22b874252ea5%22%3Bs%3A10%3A%22ip_address%22%3Bs%3A14%3A%22213.176.89.229%22%3Bs%3A10%3A%22user_agent%22%3Bs%3A111%3A%22Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F136.0.0.0+Safari%2F537.36%22%3Bs%3A13%3A%22last_activity%22%3Bi%3A1747672275%3Bs%3A9%3A%22user_data%22%3Bs%3A0%3A%22%22%3B%7Da06ba5e79aab298751973353c73e2caacdcfb3cc';
+    curl_setopt($ch, CURLOPT_COOKIE, $cookies);
+    
     $response = curl_exec($ch);
     curl_close($ch);
     $data = json_decode($response, true);
