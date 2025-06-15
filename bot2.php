@@ -95,7 +95,7 @@ function initDatabase()
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY, 
         chat_id TEXT UNIQUE, 
-        approved INTEGER DEFAULT 1
+        approved INTEGER DEFAULT 0
     )");
 
     $db->exec("CREATE TABLE IF NOT EXISTS user_trips (
@@ -178,8 +178,6 @@ function initQueueDatabase()
 
     return $db;
 }
-
-
 
 function setUserState($chat_id, $state, $temp_data = null)
 {
@@ -364,11 +362,26 @@ function fetchTickets($userTrip)
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postFields));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "accept: application/json, text/javascript, */*; q=0.01",
+        "accept-language: en-US,en;q=0.9,fa-IR;q=0.8,fa;q=0.7",
         "Content-Type: application/x-www-form-urlencoded; charset=UTF-8",
+        "origin: https://ghasedak24.com",
+        "priority: u=1, i",
         "Referer: https://ghasedak24.com/train-ticket",
-        "X-Requested-With: XMLHttpRequest",
-        "User-Agent: Mozilla/5.0"
+        "sec-ch-ua: \"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+        "sec-ch-ua-mobile: ?0",
+        "sec-ch-ua-platform: \"Windows\"",
+        "sec-fetch-dest: empty",
+        "sec-fetch-mode: cors",
+        "sec-fetch-site: same-origin",
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "X-Requested-With: XMLHttpRequest"
     ]);
+    
+    // اضافه کردن کوکی‌ها اگر نیاز باشد
+    $cookies = '_ga=GA1.1.628980040.1702320559; _ga_3KFTE6V0ZT=GS1.1.1721872044.6.1.1721872108.60.0.571740021; zbl_utm=ZBLU2FsdGVkX1/JN/N48KoyeiVP2HgejyTU/QN3FxhCW3mEMCgIlt/6If/pK7EmvMfyWqWzybRSaqvcVhfjlLb/4PtIsyepQgtdI0dtrQKXOfwXzpItzekh7iy5g4PEpbS31Iien6nzKq0O2o6tqMgnMA==; zbl_anonymous_id=ZBLU2FsdGVkX199uBlXZn6C4Lbp+A+detpONWSt/guac0o3oV9ZjfaljODKyzt0h/Tp; zbl_user=ZBLU2FsdGVkX19iWmwbcmrvmh3oQzB1a4EGsq07o3wizzIuurL2a21nFXgQsjzrggF7yUL7BaF7/NvffLN88Wzs6PLIwtxIthmjNoLyr+itMDw=; utm=%7B%22source%22%3A%22direct%22%2C%22medium%22%3A%22none%22%2C%22campaign_name%22%3A%22%22%7D; ClientId=ZFy0vZOg1YRv-Ey8Ohi0Fz0lQz7eGD41K35R5bRioT71vn8Q; zblClientAnonymousId=WRLeVbCFn782MyrgDracK; _ga_R2DNY8X9DD=GS2.1.s1747662312$o9$g1$t1747662484$j0$l0$h0; s=a%3A5%3A%7Bs%3A10%3A%22session_id%22%3Bs%3A32%3A%22cf86cb7ae34cbff4e21e22b874252ea5%22%3Bs%3A10%3A%22ip_address%22%3Bs%3A14%3A%22213.176.89.229%22%3Bs%3A10%3A%22user_agent%22%3Bs%3A111%3A%22Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F136.0.0.0+Safari%2F537.36%22%3Bs%3A13%3A%22last_activity%22%3Bi%3A1747672275%3Bs%3A9%3A%22user_data%22%3Bs%3A0%3A%22%22%3B%7Da06ba5e79aab298751973353c73e2caacdcfb3cc';
+    curl_setopt($ch, CURLOPT_COOKIE, $cookies);
+    
     $response = curl_exec($ch);
     curl_close($ch);
     $data = json_decode($response, true);
@@ -415,9 +428,6 @@ function fetchTickets($userTrip)
         }
     } elseif (isset($data['data']['status']) && $data['data']['status'] === 'raja_backup' && $userTrip['bad_data_notif'] == 0) {
         sendMessage($userTrip['chat_id'], "دوست خوبم آب از سمت رجا قطعه😂 \nبچه‌های رجا مشغول به‌روزرسانی سامانه‌ی ریلی هستن.👷‍♂️ \nدرست شد لیست بلیط‌ها به صورت خودکار برات میاد، غمت نباشه😙");
-        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
-    } elseif (isset($data['data']['status']) && $data['data']['status'] === 'failed' && $userTrip['bad_data_notif'] == 0) {
-        sendMessage($userTrip['chat_id'], "اوه اوه اوه! آب قند بیارین بچه‌های رجا از حال رفتن😂 \nبه دلیل اضافه شدن بلیط تاریخ‌های جدید، فعلا بلیط‌ها رو در اختیار هیچ سامانه‌ای قرار ندادن. \nدرست شد لیست بلیط‌ها که برای همه باز شد، به صورت خودکار برات میاد، حواسمون بهت هست😙");
         updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
     } elseif ($userTrip['bad_data_notif'] == 0) {
         // چاپ اطلاعات دریافتی از سرور
@@ -524,6 +534,7 @@ $update = json_decode(file_get_contents('php://input'), true);
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
     $webAppData = json_decode($update['message']['web_app_data']['data'], true);
+
     if (isset($webAppData['route']) && isset($webAppData['date'])) {
         $routeCode = $webAppData['route'];
         $reservationDate = $webAppData['date'];
@@ -588,6 +599,8 @@ if (isset($update['message']['web_app_data'])) {
         case '/start':
         case 'شروع':
             setUserState($chat_id, 'START');
+            approveUser($chat_id);
+            getApprovedUsers();
             break;
         // case '/help':
         case 'راهنما':
@@ -779,7 +792,7 @@ if (isset($update['message']['web_app_data'])) {
                 }
 
                 setUserState($chat_id, 'awaiting_email');
-                sendMessage($chat_id, "📧 لطفاً ایمیل خود را وارد کنید (یا بنویسید ندارم):");
+                sendMessage($chat_id, "📧 لطفاً ایمیل خود را وارد کنید (یا /skip را ارسال کنید):");
                 break;
 
             case 'awaiting_email':
@@ -878,16 +891,14 @@ function handleCallbackQuery($callback_query)
             ];
         }
         // Send the message with the inline buttons
-        editMessage($chat_id, $message_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
-        // sendMessage($chat_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
+        sendMessage($chat_id, "لطفاً مسافری که می‌خواهید حذف کنید را انتخاب کنید:", $inlineKeyboard);
     } elseif (strpos($data, 'remove_traveler_') === 0) {
         // Extract the traveler ID from the callback data
         $traveler_id = str_replace('remove_traveler_', '', $data);
         // Call the function to remove the traveler
         removeTraveler($chat_id, $traveler_id);
         // Notify the user
-        editMessage($chat_id, $message_id,"مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
-        // sendMessage($chat_id, "مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
+        sendMessage($chat_id, "مسافر با موفقیت حذف شد.", getMainMenuKeyboard($chat_id));
     } elseif ($data === 'add_traveler_list') {
         // Start the traveler list addition process
         handleAddTravelerListCommand($chat_id);
@@ -924,8 +935,7 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'india_user_') === 0) {
         // Extract the chat_id from the callback data
         $user_chat_id = str_replace('india_user_', '', $data);
-        // sendMessage($chat_id, text: "Hello dear! \n👉 If you are in India, check out this bot: \n[India Ticket Finder Bot](https://t.me/india_ticket_finder_bot)");
-        handleIndianUser($user_chat_id);
+        sendMessage($user_chat_id, "Hello dear! \n👉 If you are in India, check out this bot: \n@india_ticket_finder_bot");
     } elseif ($data === 'add_trip') {
         // Start the trip addition process
         handleSetTripCommand($chat_id);
@@ -1031,10 +1041,7 @@ function handleStartCommand($chat_id, $update)
     sendMessage($chat_id, "به ربات پیداکننده بلیط قطار خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:", $keyboard);
 }
 
-function handleIndianUser($chat_id)
-{
-    sendMessage($chat_id, text: "Hello dear! \n👉 If you are in India, check out this bot: \n[India Ticket Finder Bot](https://t.me/india_ticket_finder_bot)");
-}
+
 function handleApproveCommand($chat_id, $text)
 {
     $parts = explode(' ', $text);
@@ -1081,10 +1088,7 @@ function handleSetTripCommand($chat_id)
                 // دکمه ثبت مسیر (با callback_data)
                 ['text' => 'مشهد به تهران', 'callback_data' => 'trip_route_mashhad-tehran'],
                 // دکمه جستجو مسیر (با فعال کردن اینلاین در همین چت)
-                ['text' => 'جستجوی مسیر', 'switch_inline_query_current_chat' => '']
-            ],
-            [
-                ['text' => 'لیست کامل همه‌ی شهرها', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/bale-route.html']]
+                ['text' => 'استفاده از مینی‌اپ', 'web_app' => ['url' => 'https://botstorage.s3.ir-thr-at1.arvanstorage.ir/bale-route.html']]
             ]
         ]
     ];
@@ -1108,7 +1112,7 @@ function handleShowTripsCommand($chat_id)
     ];
 
     if (empty($trips)) {
-        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید. برای تنظیم سفر روی گزینه‌ی تنظیم سفر کلیک کنید.", getMainMenuKeyboard($chat_id));
+        sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.", $inlineKeyboard);
         return;
     }
 
@@ -1156,7 +1160,6 @@ function handleSetTripDate($chat_id, $text)
     setUserState($chat_id, 'SET_TRIP_COUNT', $temp_data);
     sendMessage($chat_id, "لطفاً تعداد بلیط‌ها را وارد کنید (مثال: 1):");
 }
-
 
 function handleSetTripReturnDate($chat_id, $text)
 {
@@ -2292,14 +2295,11 @@ function answerCallbackQuery($callback_query_id, $text, $show_alert = false)
 }
 
 // برای راحتی کار، یک تابع هم برای آپدیت پیام‌های قبلی می‌سازیم
-function editMessage($chat_id, $message_id, $text, $reply_markup = null, $isPersian = true)
+function editMessageText($chat_id, $message_id, $text, $reply_markup = null)
 {
-    $botToken = $GLOBALS['botToken'];
-    $url = "https://tapi.bale.ai/bot$botToken/editMessageText";
+    global $telegram_api;
 
-    if ($isPersian) {
-        $text = toPersianNumbers($text);
-    }
+    $url = $telegram_api . "/editMessageText";
 
     $postData = [
         'chat_id' => $chat_id,
@@ -2316,13 +2316,12 @@ function editMessage($chat_id, $message_id, $text, $reply_markup = null, $isPers
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
 
     $response = curl_exec($ch);
     curl_close($ch);
 
-    $responseArray = json_decode($response, true);
-    return $responseArray['ok'] ?? false;
+    return json_decode($response, true);
 }
 
 // تابع کمکی برای تبدیل نوع مسافر به متن
@@ -2663,7 +2662,6 @@ function broadcastMessage($message, $chat_id)
         sendMessage($chat_id, "پیام‌ها در صف ارسال قرار گرفتند و به مرور ارسال خواهند شد.");
     }
 }
-
 
 
 function translateRoute($route)
