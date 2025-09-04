@@ -58,6 +58,16 @@ $jsonHeaders = $_ENV['HEADERS'];
 // Initialize $headers array
 $headers = [];
 
+// بارگیری لیست بن شده‌ها
+if (file_exists('banned_users.json')) {
+    $bannedUsers = json_decode(file_get_contents('banned_users.json'), true) ?: [];
+} else {
+    $bannedUsers = [
+        '5211349114',
+          // یوزر آیدی کاربران مزاحم رو اینجا بذار
+    ];
+}
+
 // Check if headers are valid JSON
 // Check if $jsonHeaders is already an array
 if (is_array($jsonHeaders)) {
@@ -519,8 +529,55 @@ function getUsernameFromMessage($message)
     }
 }
 
+function isUserBanned($chat_id, $bannedUsers) {
+    return in_array($chat_id, $bannedUsers);
+}
+
+function logBannedUserAttempt($chat_id, $text) {
+    $timestamp = date('Y-m-d H:i:s');
+    $logEntry = "[$timestamp] Banned user $chat_id attempted: $text\n";
+    file_put_contents('banned_log.txt', $logEntry, FILE_APPEND | LOCK_EX);
+}
+
 // Add the REMOVE_TRIP state to the state handling logic
 $update = json_decode(file_get_contents('php://input'), true);
+
+
+// 4. چک کردن بن برای تمام انواع آپدیت‌ها
+$chat_id_to_check = null;
+$update_type = '';
+
+// تعیین chat_id و نوع آپدیت
+if (isset($update['message']['web_app_data'])) {
+    $chat_id_to_check = $update['message']['chat']['id'];
+    $update_type = 'web_app_data';
+} elseif (isset($update['message'])) {
+    $chat_id_to_check = $update['message']['chat']['id'];
+    $update_type = 'message';
+} elseif (isset($update['callback_query'])) {
+    $chat_id_to_check = $update['callback_query']['from']['id'];
+    $update_type = 'callback_query';
+} elseif (isset($update['inline_query'])) {
+    $chat_id_to_check = $update['inline_query']['from']['id'];
+    $update_type = 'inline_query';
+}
+
+// اگر کاربر بن است، هیچ کاری نکن
+if ($chat_id_to_check && isUserBanned($chat_id_to_check, $bannedUsers)) {
+    $text_to_log = '';
+    if (isset($update['message']['text'])) {
+        $text_to_log = $update['message']['text'];
+    } elseif (isset($update['callback_query']['data'])) {
+        $text_to_log = $update['callback_query']['data'];
+    } else {
+        $text_to_log = $update_type;
+    }
+    
+    logBannedUserAttempt($chat_id_to_check, $text_to_log);
+    exit; // کاربر بن است - هیچ جوابی نده
+}
+
+
 if (isset($update['message']['web_app_data'])) {
     $chat_id = $update['message']['chat']['id'];
     $webAppData = json_decode($update['message']['web_app_data']['data'], true);
@@ -809,6 +866,8 @@ if (isset($update['message']['web_app_data'])) {
     }
 
 }
+
+
 
 function showPrivateInfo($chat_id)
 {
