@@ -1193,6 +1193,15 @@ function handleHelpCommand($chat_id)
 
 function handleSetTripCommand($chat_id)
 {
+    $app = trainMiniAppUrl();
+    if ($app !== null) {
+        clearUserState($chat_id);
+        sendMessage($chat_id, 'مسیر، تاریخ و همهٔ ترجیحات سفر را یک‌جا انتخاب کنید.', ['inline_keyboard'=>[
+            [['text'=>'ثبت سفر تازه', 'web_app'=>['url'=>$app]]],
+            [['text'=>'سفرهای من و تنظیم هشدارها', 'web_app'=>['url'=>trainMiniAppUrl('trips')]]],
+        ]], true, null);
+        return;
+    }
     $inlineKeyboard = [
         'inline_keyboard' => [
             [
@@ -1224,6 +1233,10 @@ function handleShowTripsCommand($chat_id)
             ]
         ]
     ];
+
+    if (trainMiniAppUrl('trips') !== null) {
+        $inlineKeyboard['inline_keyboard'][] = [['text'=>'سفرها و هشدارها در مینی‌اپ', 'web_app'=>['url'=>trainMiniAppUrl('trips')]]];
+    }
 
     if (empty($trips)) {
         sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید. برای تنظیم سفر روی گزینه‌ی تنظیم سفر کلیک کنید.", getMainMenuKeyboard($chat_id));
@@ -2567,6 +2580,11 @@ function getMainMenuKeyboard($chat_id)
         [['text' => 'مسافران سابق'], ['text' => 'لیست‌های مسافران']],
         [['text' => 'اطلاعات شخصی']]
     ];
+
+    if (trainMiniAppUrl() !== null) {
+        // Inline launchers provide signed initData; reply-keyboard web apps do not.
+        $keyboard[0][0] = ['text'=>'تنظیم سفر'];
+    }
 
     // اگر کاربر ادمین است دکمه ارسال پیام همگانی اضافه می‌شود
     if ($chat_id == $GLOBALS['adminChatId']) {

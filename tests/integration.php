@@ -36,7 +36,8 @@ try {
     fclose($socket);
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
-        'train_follows.php', 'train_follow_bot.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js'] as $file) {
+        'train_follows.php', 'train_follow_bot.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','trip_app.php','train_cities.json'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
     // Replace service origins only in the test copy; no real bookings or messages.
@@ -46,6 +47,7 @@ try {
 <?php
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path === '/telegram-alerts.php') { require __DIR__ . '/telegram-alerts.php'; return; }
+if ($path === '/telegram-app.php') { require __DIR__ . '/telegram-app.php'; return; }
 $payload = $_POST;
 if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0) {
     $payload = json_decode(file_get_contents('php://input'), true);
@@ -321,8 +323,8 @@ PHP);
         $fields['hash'] = hash_hmac('sha256', implode("\n", $check), hash_hmac('sha256','TEST','WebAppData',true));
         return http_build_query($fields);
     };
-    $api = static function (array $body) use ($base): array {
-        $curl = curl_init($base . '/telegram-alerts.php?api=1');
+    $api = static function (array $body, string $entry = 'telegram-alerts.php') use ($base): array {
+        $curl = curl_init($base . '/' . $entry . '?api=1');
         curl_setopt_array($curl, [CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($body),CURLOPT_HTTPHEADER=>['Content-Type: application/json'],
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>8]);
         $response = curl_exec($curl);
@@ -435,6 +437,48 @@ PHP);
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $restored=array_values(array_filter($newMessages($before),static fn($message)=>str_contains($message['payload']['text'],'بلیط موجود است')));
     verify(count($restored)===3,'Restoring A should include all three trains again');
+    $app = static fn(array $body) => $api($body, 'telegram-app.php');
+    [$status,$bootstrap] = $app(['init_data'=>$auth,'action'=>'bootstrap']);
+    verify($status===200 && count($bootstrap['data']['cities'])===36 && count($bootstrap['data']['trips'])===1,'Unified app loads owned trips and local stations');
+    verify($app(['init_data'=>'fake','action'=>'bootstrap'])[0]===401,'Unified app rejects forged auth');
+    $input=['origin'=>'tehran','destination'=>'mashhad','date'=>'1490-01-01','count'=>2,'type'=>0,'coupe'=>false,'allow_partial_capacity'=>false,'search_filters'=>['train_types'=>['compartment_4']]];
+    $create=['init_data'=>$auth,'action'=>'create_trip','request_id'=>str_repeat('x',32),'trip'=>$input];
+    $before=count($readRequests());
+    [$status,$new] = $app($create);
+    verify($status===200 && $new['data']['created']===true && $new['data']['trip']['mode']==='all','Complete creation defaults to all trains');
+    verify(count($readRequests())===$before,'Creation does not wait for upstream inventory or send unsolicited bot messages');
+    $id=$new['data']['trip']['id'];
+    [$status,$retry]=$app($create);
+    verify($status===200 && $retry['data']['created']===false && $retry['data']['trip']['id']===$id,'Retry returns original trip');
+    $mismatch=$create;$mismatch['trip']['count']=3;
+    verify($app($mismatch)[0]===409,'Reused request key with changed payload conflicts');
+    $bad=$create;$bad['request_id']=str_repeat('b',32);$bad['trip']['date']='1404-12-30';
+    verify($app($bad)[0]===400,'Invalid leap date is rejected');
+    $preferences=['init_data'=>$auth,'action'=>'update_preferences','trip_id'=>$id,'revision'=>0,'allow_partial_capacity'=>true,'search_filters'=>['max_price'=>1000000]];
+    $foreign=$preferences;$foreign['init_data']=$authFor(202);
+    verify($app($foreign)[0]===404,'Foreign preference writes are rejected');
+    [$status,$updated]=$app($preferences);
+    verify($status===200 && $updated['data']['revision']===1 && $updated['data']['allow_partial_capacity']===true,'Local preferences update with revision');
+    verify($app($preferences)[0]===409,'Stale preferences cannot overwrite newer edits');
+    file_put_contents($temp.'/launch-app.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY', true);
+require __DIR__.'/bot.php';
+$_ENV['ALERTS_WEB_APP_URL']='https://example.test/bot/telegram-alerts.php';
+if (trainMiniAppUrl() !== 'https://example.test/bot/telegram-app.php?view=create'
+    || followMiniAppUrl(1) !== 'https://example.test/bot/telegram-app.php?view=alerts&trip_id=1') {
+    throw new RuntimeException('Legacy URL must resolve to the unified app');
+}
+if (isset(getMainMenuKeyboard(101)['keyboard'][0][0]['web_app'])) {
+    throw new RuntimeException('Authenticated entry must not use a reply-keyboard web app');
+}
+handleSetTripCommand(101);
+PHP);
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/launch-app.php']),$temp);
+    $launcher=$newMessages($before);
+    verify(count($launcher)===1 && str_contains($launcher[0]['payload']['reply_markup'],'telegram-app.php?view=create'),'Registration uses an inline authenticated launcher');
+    echo "PASS Unified Mini App API: signed bootstrap, complete create, retry, conflicts, local preferences and ownership\n";
     echo "PASS Telegram worker: shared requests, per-user buttons and flags, expiry, fresh cycles and cron locking\n";
     echo "PASS Capacity, local filters, setup/edit callbacks, ownership, partial links and wheelchair payload\n";
     echo "PASS Follow selection: full catalog, signed mini app API, quiet steady states, reopening, edits and pause\n";

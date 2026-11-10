@@ -210,6 +210,21 @@ followed-alert delivery state.
 
 ## Usage
 
+The Telegram unified Mini App now handles complete trip creation (route, Jalali
+date, passengers, quota, coupe and optional local filters), owned trip preferences
+and train alert selection in one interface. See [deployment instructions](MINI_APP_DEPLOY.md)
+and the [design decisions](design/miniapp/README.md).
+
+Set `MINI_APP_URL` to the HTTPS URL of `telegram-app.php`, or keep the existing
+`ALERTS_WEB_APP_URL` ending in `telegram-alerts.php` to derive the sibling URL.
+Existing alert links and the old alert POST API remain compatible. Inline Web App
+launchers supply signed authentication; the old reply-keyboard route page remains
+available only as a legacy fallback when no Mini App URL is configured.
+
+Validation: `php tests/run.php`, `php tests/integration.php`,
+`node tests/calendar.test.js`, `node tests/miniapp_frontend.test.js`, and
+`node tests/alerts_frontend.test.js`.
+
 1. **Start the bot**:
    Users can start interacting with the bot via Telegram by sending a message to the bot.
 

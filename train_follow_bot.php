@@ -45,14 +45,24 @@ function followPickerData(SQLite3 $db, array $trip, bool $refresh = false): arra
     ];
 }
 
-function followMiniAppUrl(int $tripId): ?string
+function trainMiniAppUrl(string $view = 'create', ?int $tripId = null): ?string
 {
-    $base = trim((string) ($_ENV['ALERTS_WEB_APP_URL'] ?? ''));
+    $base = trim((string) ($_ENV['MINI_APP_URL'] ?? ''));
+    if ($base === '') {
+        $legacy = trim((string) ($_ENV['ALERTS_WEB_APP_URL'] ?? ''));
+        $base = preg_replace('~telegram-alerts\.php(?:\?.*)?$~', 'telegram-app.php', $legacy);
+        if ($base === $legacy) { return null; }
+    }
     if (filter_var($base, FILTER_VALIDATE_URL) === false || strtolower(parse_url($base, PHP_URL_SCHEME) ?? '') !== 'https') {
         return null;
     }
     // A configured URL must point to this feature's PHP entry point, not a user-supplied host.
-    return $base . (strpos($base, '?') === false ? '?' : '&') . 'trip_id=' . $tripId;
+    return $base . (strpos($base, '?') === false ? '?' : '&') . http_build_query(['view'=>$view] + ($tripId === null ? [] : ['trip_id'=>$tripId]));
+}
+
+function followMiniAppUrl(int $tripId): ?string
+{
+    return trainMiniAppUrl('alerts', $tripId);
 }
 
 function trainTripManagementKeyboard(int $tripId): array

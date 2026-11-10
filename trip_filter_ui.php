@@ -157,19 +157,12 @@ function saveTripFilterDraft($chatId, array $trip, bool $openFollows = false): v
     $trip['search_filters'] = tripFilters($trip);
     if (isset($trip['editing_trip_id'])) {
         $db = initDatabase();
-        $stmt = $db->prepare('UPDATE user_trips SET allow_partial_capacity = :partial, search_filters = :filters,
-            no_counting_notif = 0, no_ticket_notif = 0, bad_data_notif = 0 WHERE id = :id AND chat_id = :chat_id');
-        $stmt->bindValue(':partial', !empty($trip['allow_partial_capacity']) ? 1 : 0, SQLITE3_INTEGER);
-        $stmt->bindValue(':filters', json_encode($trip['search_filters'], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), SQLITE3_TEXT);
-        $stmt->bindValue(':id', (int) $trip['editing_trip_id'], SQLITE3_INTEGER);
-        $stmt->bindValue(':chat_id', $chatId, SQLITE3_TEXT);
-        if (!$stmt->execute()) {
-            sendTripFilterMessage($chatId, 'ذخیرهٔ فیلترها انجام نشد؛ دوباره تلاش کنید.');
-            return;
-        }
-        if ($db->changes() === 0) {
-            clearUserState($chatId);
-            sendTripFilterMessage($chatId, 'این سفر دیگر در فهرست شما نیست.');
+        require_once __DIR__ . '/trip_app.php';
+        try {
+            miniAppPreferences($db, (string)$chatId, ['trip_id'=>(int)$trip['editing_trip_id'],
+                'revision'=>(int)($trip['follow_revision'] ?? 0), 'allow_partial_capacity'=>!empty($trip['allow_partial_capacity']), 'search_filters'=>$trip['search_filters']]);
+        } catch (Throwable $error) {
+            sendTripFilterMessage($chatId, in_array($error->getCode(), [400,404,409], true) ? $error->getMessage() : 'ذخیرهٔ فیلترها انجام نشد؛ دوباره تلاش کنید.');
             return;
         }
     } else {

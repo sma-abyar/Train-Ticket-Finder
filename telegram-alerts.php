@@ -11,7 +11,8 @@ if (!isset($_GET['api'])) {
     }
     header('Content-Type: text/html; charset=utf-8');
     header("Content-Security-Policy: default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org");
-    readfile(__DIR__ . '/telegram-alerts.html');
+    // Keep previously sent links valid while using the same unified interface.
+    readfile(__DIR__ . '/telegram-app.html');
     exit;
 }
 
