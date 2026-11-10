@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__ . '/trip_preferences.php';
+require_once __DIR__ . '/train_follows.php';
+
 class Database {
     private $dbPath;
 
@@ -8,7 +11,9 @@ class Database {
     }
 
     public function connect() {
-        return new SQLite3($this->dbPath);
+        $db = new SQLite3($this->dbPath);
+        $db->busyTimeout(5000);
+        return $db;
     }
 
     public function initDatabase() {
@@ -28,6 +33,8 @@ class Database {
             no_ticket_notif INTEGER,
             bad_data_notif INTEGER
         )");
+        ensureTripPreferencesSchema($db);
+        ensureTrainFollowTables($db);
         $db->exec("CREATE TABLE IF NOT EXISTS travelers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id TEXT NOT NULL,

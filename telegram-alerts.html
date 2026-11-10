@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>قطارهای هشدار من</title>
+  <link rel="stylesheet" href="telegram-alerts.css?v=20261110-2">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="telegram-alerts.js?v=20261110-2" defer></script>
+</head>
+<body>
+  <main>
+    <header class="heading">
+      <div class="eyebrow"><span class="signal"></span> مدیریت هشدار سفر</div>
+      <h1>فقط قطارهایی که می‌خواهی</h1>
+      <p id="trip-summary" class="muted">در حال دریافت سفر…</p>
+    </header>
+    <div id="notice" role="status" class="notice" hidden></div>
+    <section id="controls" hidden>
+      <fieldset class="modes">
+        <legend>برای کدام قطارها خبرت کنیم؟</legend>
+        <label><input type="radio" name="mode" value="selected"><span>انتخاب من<small>فقط قطارهایی که علامت می‌زنم</small></span></label>
+        <label><input type="radio" name="mode" value="all"><span>همهٔ قطارها<small>مطابق فیلترهای سفر</small></span></label>
+        <label id="except-mode" hidden><input type="radio" name="mode" value="except"><span>همه به‌جز حذف‌شده‌ها<small>قطارهای خاموش‌شده را دوباره انتخاب کنید</small></span></label>
+        <label><input type="radio" name="mode" value="none"><span>فعلاً هیچ‌کدام<small>هشدار این سفر خاموش باشد</small></span></label>
+      </fieldset>
+      <div class="section-top"><h2>قطارهای این روز <span id="total" class="pill"></span></h2><button id="refresh" type="button" class="text-button">تازه کردن فهرست</button></div>
+      <p class="hint">ناموجودها هم قابل انتخاب‌اند. برای قطارهای انتخابی، فقط هنگام موجودشدن یا کافی‌شدن ظرفیت خبر می‌دهیم؛ وضعیت ثابت، هشدار تکراری ندارد.</p>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="جست‌وجوی شماره، نام قطار یا شرکت" aria-label="جست‌وجوی قطار"></label>
+      <div class="selection-actions"><span id="selected-count"></span><button id="select-all" type="button" class="text-button">انتخاب فهرست</button><button id="clear" type="button" class="text-button">پاک کردن انتخاب‌ها</button></div>
+      <div id="trains" class="train-list" aria-live="polite"></div>
+      <p id="empty" class="empty" hidden>قطاری با این مشخصات در فهرست نیست.</p>
+      <p class="hint bottom-hint">فیلترهای ظرفیت، قیمت، ساعت و شرکتِ سفر همچنان اعمال می‌شوند. انتخاب قطارهای ناموجود تا بررسی‌های بعدی حفظ می‌شود.</p>
+      <p id="updated" class="updated"></p>
+    </section>
+  </main>
+  <footer id="footer" hidden><div><strong id="footer-count"></strong><span id="dirty-state">تنظیمات ذخیره‌شده</span></div><button id="save" type="button">ثبت انتخاب‌ها</button></footer>
+</body>
+</html>

@@ -1,5 +1,8 @@
 <?php
 
+require_once __DIR__ . '/trip_preferences.php';
+require_once __DIR__ . '/train_follows.php';
+
 class Trip {
     private $db;
 
@@ -8,8 +11,9 @@ class Trip {
     }
 
     public function save($chat_id, $data) {
-        $stmt = $this->db->prepare("INSERT INTO user_trips (chat_id, route, date, return_date, count, type, coupe, filter, no_counting_notif, no_ticket_notif, bad_data_notif) 
-                          VALUES (:chat_id, :route, :date, :return_date, :count, :type, :coupe, :filter, :no_counting_notif, :no_ticket_notif, :bad_data_notif)");
+        ensureTripPreferencesSchema($this->db);
+        $stmt = $this->db->prepare("INSERT INTO user_trips (chat_id, route, date, return_date, count, type, coupe, filter, no_counting_notif, no_ticket_notif, bad_data_notif, allow_partial_capacity, search_filters, follow_mode)
+                          VALUES (:chat_id, :route, :date, :return_date, :count, :type, :coupe, :filter, :no_counting_notif, :no_ticket_notif, :bad_data_notif, :allow_partial_capacity, :search_filters, :follow_mode)");
         $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
         $stmt->bindValue(':route', $data['route'], SQLITE3_TEXT);
         $stmt->bindValue(':date', $data['date'], SQLITE3_TEXT);
@@ -21,6 +25,9 @@ class Trip {
         $stmt->bindValue(':no_counting_notif', 0, SQLITE3_INTEGER);
         $stmt->bindValue(':no_ticket_notif', 0, SQLITE3_INTEGER);
         $stmt->bindValue(':bad_data_notif', 0, SQLITE3_INTEGER);
+        $stmt->bindValue(':allow_partial_capacity', !empty($data['allow_partial_capacity']) ? 1 : 0, SQLITE3_INTEGER);
+        $stmt->bindValue(':search_filters', json_encode(tripFilters($data), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), SQLITE3_TEXT);
+        $stmt->bindValue(':follow_mode', tripFollowMode($data), SQLITE3_TEXT);
         $stmt->execute();
     }
 
