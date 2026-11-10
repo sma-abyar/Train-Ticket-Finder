@@ -3,6 +3,8 @@
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
 header('X-Content-Type-Options: nosniff');
+require_once __DIR__.'/miniapp_assets.php';
+if (serveMiniAppAsset()) { exit; }
 
 if (!isset($_GET['api'])) {
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {

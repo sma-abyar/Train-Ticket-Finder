@@ -1,3 +1,4 @@
 *.env
 ticket-check.lock
 *.catalog.lock
+__pycache__/

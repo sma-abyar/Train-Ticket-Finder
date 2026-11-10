@@ -37,9 +37,11 @@ try {
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
-        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
+    mkdir($temp.'/fonts');mkdir($temp.'/fonts/webfonts');
+    copy($root.'/fonts/webfonts/Vazirmatn[wght].woff2',$temp.'/fonts/webfonts/Vazirmatn[wght].woff2');
     // Real rate limiting is verified with an injected clock in unit tests; keep
     // mock HTTP scenarios fast without adding a production bypass setting.
     file_put_contents($temp.'/telegram_delivery.php',str_replace(['CHAT_INTERVAL = 1.05','GLOBAL_INTERVAL = 0.04'],['CHAT_INTERVAL = 0.0','GLOBAL_INTERVAL = 0.0'],file_get_contents($root.'/telegram_delivery.php')));
@@ -51,6 +53,7 @@ try {
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path === '/telegram-alerts.php') { require __DIR__ . '/telegram-alerts.php'; return; }
 if ($path === '/telegram-app.php') { require __DIR__ . '/telegram-app.php'; return; }
+if (preg_match('/\.(css|js|woff2)$/D',$path)) { http_response_code(403); echo 'Forbidden'; return; }
 $payload = $_POST;
 if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0) {
     $payload = json_decode(file_get_contents('php://input'), true);
@@ -112,6 +115,33 @@ PHP);
         usleep(100000);
     }
     verify($ready, 'Mock API did not start');
+    $publicGet=static function(string $path,array $headers=[],string $method='GET')use($base):array{
+        $received=[];$curl=curl_init($base.$path);
+        curl_setopt_array($curl,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>8,CURLOPT_HTTPHEADER=>$headers,
+            CURLOPT_HEADERFUNCTION=>static function($curl,$line)use(&$received){if(strpos($line,':')!==false){[$name,$value]=explode(':',$line,2);$received[strtolower(trim($name))]=trim($value);}return strlen($line);}]);
+        if($method==='HEAD')curl_setopt($curl,CURLOPT_NOBODY,true);
+        elseif($method==='POST')curl_setopt($curl,CURLOPT_POST,true);
+        $body=curl_exec($curl);$status=(int)curl_getinfo($curl,CURLINFO_HTTP_CODE);curl_close($curl);
+        return [$status,$body,$received];
+    };
+    rename($temp.'/.env',$temp.'/.env.asset-test');
+    try {
+        verify($publicGet('/telegram-app.css?v=2')[0]===403,'Reproduce static-file denial');
+        foreach(['style'=>['telegram-app.css','text/css'],'app'=>['telegram-app.js','text/javascript'],'calendar'=>['miniapp-calendar.js','text/javascript'],'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2']] as $name=>[$source,$mime]){
+            [$status,$body,$headers]=$publicGet('/telegram-app.php?asset='.$name.'&v=3');
+            verify($status===200 && str_starts_with($headers['content-type']??'',$mime),'UI asset must have the correct MIME type: '.$name);
+            verify(hash('sha256',$body)===hash_file('sha256',$temp.'/'.$source),'Asset bytes must match the source: '.$name);
+            verify(($headers['x-content-type-options']??'')==='nosniff','Assets must not rely on MIME sniffing');
+            verify($publicGet('/telegram-app.php?asset='.$name.'&v=3',['If-None-Match: '.$headers['etag']])[0]===304,'Unchanged assets support cache revalidation');
+        }
+        verify($publicGet('/telegram-alerts.php?asset=style')[0]===200,'Legacy entry supports the same asset route');
+        verify($publicGet('/telegram-app.php?asset=style',[],'HEAD')[0]===200,'Asset HEAD succeeds');
+        verify($publicGet('/telegram-app.php?asset=style',[],'POST')[0]===405,'Asset POST cannot run the API');
+        foreach(['.env','../.env','bot.php','unknown']as$name)verify($publicGet('/telegram-app.php?asset='.rawurlencode($name))[0]===404,'Only explicitly listed assets may be read');
+        verify($publicGet('/telegram-app.php?asset%5B%5D=style')[0]===404,'Array parameters cannot select a file');
+        verify(!is_file($temp.'/users.db'),'Serving UI assets must not open or create a database');
+        echo "PASS Hosting regression: denied static files, PHP CSS/JS/font, MIME, ETag, safe allowlist and no credentials/database dependency\n";
+    }finally{rename($temp.'/.env.asset-test',$temp.'/.env');}
     file_put_contents($temp . '/seed.php', <<<'PHP'
 <?php
 define('TRAIN_TICKET_BOT_LIBRARY_ONLY', true);
@@ -570,6 +600,9 @@ PHP);
         proc_close($server);
     }
     // This directory is freshly created above; remove only its known flat files.
+    if (is_file($temp.'/fonts/webfonts/Vazirmatn[wght].woff2')) { unlink($temp.'/fonts/webfonts/Vazirmatn[wght].woff2'); }
+    if (is_dir($temp.'/fonts/webfonts')) { rmdir($temp.'/fonts/webfonts'); }
+    if (is_dir($temp.'/fonts')) { rmdir($temp.'/fonts'); }
     foreach (glob($temp . '/*') as $file) {
         unlink($file);
     }

@@ -210,6 +210,10 @@ followed-alert delivery state.
 
 ## Usage
 
+If the Mini App is unstyled or shows oversized black icons, see
+[the hosting asset fix](MINI_APP_ASSETS_FIX.md). Upload bundles must be built
+with `python tools/build_upload.py output.zip` to preserve public file permissions.
+
 For notification delivery failures, see [delivery diagnostics and fixes](NOTIFICATION_DELIVERY.md).
 
 The Telegram unified Mini App now handles complete trip creation (route, Jalali
