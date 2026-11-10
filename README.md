@@ -216,6 +216,10 @@ with `python tools/build_upload.py output.zip` to preserve public file permissio
 
 For notification delivery failures, see [delivery diagnostics and fixes](NOTIFICATION_DELIVERY.md).
 
+The redesigned train list uses independent on/off switches with immediate saving,
+idempotent retries and server reconciliation after interrupted responses. See
+[the redesign and installation notes](MINI_APP_REDESIGN.md).
+
 The Telegram unified Mini App now handles complete trip creation (route, Jalali
 date, passengers, quota, coupe and optional local filters), owned trip preferences
 and train alert selection in one interface, including confirmed trip deletion.

@@ -247,6 +247,23 @@ $tests['trip deletion also removes its followed-alert delivery records'] = stati
     expect($db->querySingle('SELECT COUNT(*) FROM train_follow_delivery'), 0);
 };
 
+$tests['independent train switches merge changes and idempotent retries preserve revision'] = static function () {
+    [$db,$trip]=followFixture();
+    $a=followTicket();$b=followTicket(['id'=>'second','train_number_en'=>189,'train_number'=>'۱۸۹','time'=>'۱۵:۲۰']);
+    storeTrainCatalog($db,TicketSearchBatch::payload($trip),[$a,$b]);
+    $ka=trainFollowKey($a);$kb=trainFollowKey($b);
+    $first=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($ka,0,24),false);
+    $second=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($kb,0,24),false);
+    expect(count(tripExcludedTrains($second)),2,'A second switch must preserve the first switch');
+    $retry=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($kb,0,24),false);
+    expect($retry['follow_revision'],$second['follow_revision'],'Retrying the same target state must be a no-op');
+    assertFollowError(static fn()=>setTrainMessagePreference($db,(int)$trip['id'],'202',substr($ka,0,24),true),404);
+    $paused=saveTrainFollows($db,(int)$trip['id'],'101','none',[$ka],(int)$retry['follow_revision']);
+    $enabled=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($kb,0,24),true);
+    expect($enabled['follow_mode'],'selected');
+    expect(array_column(tripFollowedTrains($enabled),'key'),[$kb],'Turning on one service must not resume old paused choices');
+};
+
 $tests['Telegram mini app authentication checks signature, user, timestamp and duplicate fields'] = static function () {
     $now = 1700000000;
     $fields = ['auth_date'=>(string) $now, 'query_id'=>'query', 'user'=>json_encode(['id'=>1234567890123,'first_name'=>'Test']), 'signature'=>'extra-telegram-field'];

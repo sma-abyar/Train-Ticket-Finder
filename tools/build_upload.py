@@ -15,7 +15,7 @@ trip_app.php trip_dates.php trip_filter_ui.php trip_preferences.php trip.php use
 telegram-app.html telegram-app.css telegram-app.js miniapp-calendar.js
 telegram-alerts.html telegram-alerts.css telegram-alerts.js train_cities.json
 fonts/webfonts/Vazirmatn[wght].woff2 licenses/jalaali-js.txt LICENSE
-MINI_APP_DEPLOY.md NOTIFICATION_DELIVERY.md MINI_APP_ASSETS_FIX.md'''.split()
+MINI_APP_DEPLOY.md NOTIFICATION_DELIVERY.md MINI_APP_ASSETS_FIX.md MINI_APP_REDESIGN.md'''.split()
 
 
 def build_upload(destination, root=ROOT):

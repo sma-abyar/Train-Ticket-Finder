@@ -17,6 +17,7 @@ function miniAppTrip(array $trip): array
         'date'=>$trip['date'], 'count'=>(int)$trip['count'], 'type'=>(int)$trip['type'],
         'coupe'=>(bool)$trip['coupe'], 'allow_partial_capacity'=>(bool)$trip['allow_partial_capacity'],
         'search_filters'=>tripFilters($trip), 'mode'=>tripFollowMode($trip), 'revision'=>(int)$trip['follow_revision'],
+        'selected_count'=>count(tripFollowedTrains($trip)), 'excluded_count'=>count(tripExcludedTrains($trip)),
     ];
 }
 

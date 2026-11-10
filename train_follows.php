@@ -275,9 +275,13 @@ function setTrainMessagePreference(SQLite3 $db, int $tripId, string $chatId, str
         $mode = tripFollowMode($trip);
         $selected = array_column(tripFollowedTrains($trip), 'key');
         $excluded = array_column(tripExcludedTrains($trip), 'key');
+        $currentlyEnabled = $mode === 'all' || ($mode === 'except' && !in_array($key,$excluded,true))
+            || ($mode === 'selected' && in_array($key,$selected,true));
+        if ($currentlyEnabled === $enabled) { return $trip; }
         if ($enabled) {
             $excluded = array_values(array_diff($excluded, [$key]));
             if ($mode === 'none' || $mode === 'selected') {
+                if ($mode === 'none') { $selected=[]; }
                 $mode = 'selected';
                 $selected = array_values(array_unique(array_merge($selected, [$key])));
             } elseif ($mode === 'except' && !$excluded) {

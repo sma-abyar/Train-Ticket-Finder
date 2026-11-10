@@ -38,10 +38,17 @@ try {
         $data = miniAppPreferences($db, $chat, $body);
     } elseif ($action === 'delete_trip') {
         $data = miniAppDeleteTrip($db, $chat, $body);
-    } elseif (in_array($action, ['load','refresh','save'], true)) {
+    } elseif (in_array($action, ['load','refresh','save','set_train'], true)) {
         if (!is_int($body['trip_id'] ?? null) || $body['trip_id'] < 1) { throw new InvalidArgumentException('سفر معتبر نیست.', 400); }
         $trip = ownedFollowTrip($db, $body['trip_id'], $chat);
-        if ($action === 'save') {
+        if ($action === 'set_train') {
+            if (!is_string($body['train_key'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D',$body['train_key']) || !is_bool($body['enabled'] ?? null)) {
+                throw new InvalidArgumentException('وضعیت هشدار قطار معتبر نیست.',400);
+            }
+            $known=array_column(trainFollowOptions($trip,loadTrainCatalog($db,$trip)),null,'key');
+            if (!isset($known[$body['train_key']])) { throw new InvalidArgumentException('این قطار در فهرست سفر نیست.',400); }
+            $trip=setTrainMessagePreference($db,$body['trip_id'],$chat,substr($body['train_key'],0,24),$body['enabled']);
+        } elseif ($action === 'save') {
             if (!is_string($body['mode'] ?? null) || !is_array($body['keys'] ?? null) || !is_int($body['revision'] ?? null) || !is_array($body['excluded_keys'] ?? [])) { throw new InvalidArgumentException('انتخاب قطارها معتبر نیست.', 400); }
             $trip = saveTrainFollows($db, $body['trip_id'], $chat, $body['mode'], $body['keys'], $body['revision'], $body['excluded_keys'] ?? []);
         }
