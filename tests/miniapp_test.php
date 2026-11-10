@@ -39,3 +39,20 @@ $tests['mini app preferences use ownership and revision without changing train c
     $body['revision']=0;
     assertFollowError(static fn()=>miniAppPreferences($db,'101',$body),409);
 };
+
+$tests['mini app deletes only an owned unchanged trip and clears its alert history'] = static function () {
+    [$db,$trip]=followFixture();$key=trainFollowKey(followTicket());
+    $trip=saveTrainFollows($db,(int)$trip['id'],'101','selected',[$key],0);
+    (new TrainFollowAlerts($db))->observe($trip,[followTicket(['counting_en'=>2])]);
+    (new Trip($db))->save('202',array_replace(sampleTrip(),['date'=>$trip['date']]));
+    $body=['trip_id'=>(int)$trip['id'],'revision'=>1];
+    assertFollowError(static fn()=>miniAppDeleteTrip($db,'202',$body),404);
+    assertFollowError(static fn()=>miniAppDeleteTrip($db,'101',array_replace($body,['revision'=>0])),409);
+    assertFollowError(static fn()=>miniAppDeleteTrip($db,'101',array_replace($body,['trip_id'=>'1'])),400);
+    expect((int)$db->querySingle('SELECT COUNT(*) FROM train_follow_delivery'),1);
+    expect(miniAppDeleteTrip($db,'101',$body),['deleted'=>true,'trip_id'=>(int)$trip['id']]);
+    expect((int)$db->querySingle('SELECT COUNT(*) FROM train_follow_delivery'),0);
+    expect((int)$db->querySingle("SELECT COUNT(*) FROM user_trips WHERE chat_id='202'"),1);
+    expect(loadTrainCatalog($db,$trip)!==null,true,'Deleting one trip must preserve shared inventory');
+    assertFollowError(static fn()=>miniAppDeleteTrip($db,'101',$body),404);
+};

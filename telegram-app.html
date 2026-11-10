@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark"><title>همسفر · دستیار بلیط قطار</title>
-  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=3">
+  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=4">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="telegram-app.php?asset=calendar&amp;v=3" defer></script><script src="telegram-app.php?asset=app&amp;v=3" defer></script>
+  <script src="telegram-app.php?asset=calendar&amp;v=4" defer></script><script src="telegram-app.php?asset=app&amp;v=4" defer></script>
 </head>
 <body>
 <div class="app">
@@ -43,6 +43,7 @@
   </main>
   <nav class="bottom-nav" aria-label="بخش‌های مینی‌اپ"><button type="button" data-nav="trips"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="17" rx="3"/><path d="M8 2v4m8-4v4M8 11h8m-8 5h5"/></svg>سفرهای من</button><button type="button" data-nav="create"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>سفر تازه</button><button type="button" data-nav="alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 2v2"/></svg>هشدارها</button></nav>
 </div>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">این سفر حذف شود؟</h2><p id="delete-trip-summary" class="route-strip"></p><p class="small">هشدارهای این سفر هم متوقف می‌شوند. اگر دوباره آن را خواستی، باید سفر تازه ثبت کنی.</p><div class="dialog-actions"><button type="button" id="cancel-delete" class="secondary">نگه داشتن سفر</button><button type="button" id="confirm-delete" class="primary danger-button">حذف سفر</button></div></dialog>
 <dialog id="date-dialog" aria-labelledby="date-title"><div class="sheet-heading"><div><div class="eyebrow">زمان سفر تو</div><h2 id="date-title">انتخاب روز حرکت</h2></div><button type="button" id="close-calendar" class="icon-button" aria-label="بستن تقویم">×</button></div><div class="calendar"><div class="calendar-heading"><button type="button" id="previous-month" class="icon-button" aria-label="ماه قبل">‹</button><h3 id="month-title" aria-live="polite"></h3><button type="button" id="next-month" class="icon-button" aria-label="ماه بعد">›</button></div><div class="weekdays" aria-hidden="true"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div><div id="calendar-days" class="calendar-days" role="group" aria-label="روزهای ماه"></div><div class="date-caption" id="date-caption">یک روز را انتخاب کن</div></div><p class="small">نقطهٔ زیر عدد، امروز را نشان می‌دهد. روزهای گذشته قابل انتخاب نیستند.</p></dialog>
 <dialog id="city-dialog" aria-labelledby="city-title"><div class="sheet-heading"><div><div class="eyebrow">ایستگاه قطار</div><h2 id="city-title">انتخاب شهر</h2></div><button type="button" id="close-city" class="icon-button" aria-label="بستن انتخاب شهر">×</button></div><label class="search-box"><span class="sr-only">جست‌وجوی شهر</span><input type="search" id="city-search" placeholder="نام شهر را بنویس…" autocomplete="off"></label><div id="city-list" class="city-list"></div><p class="small">ایستگاه‌های پشتیبانی‌شدهٔ فعلی</p></dialog>
 </body></html>

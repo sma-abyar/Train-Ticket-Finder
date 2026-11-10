@@ -218,7 +218,9 @@ For notification delivery failures, see [delivery diagnostics and fixes](NOTIFIC
 
 The Telegram unified Mini App now handles complete trip creation (route, Jalali
 date, passengers, quota, coupe and optional local filters), owned trip preferences
-and train alert selection in one interface. See [deployment instructions](MINI_APP_DEPLOY.md)
+and train alert selection in one interface, including confirmed trip deletion.
+Trip-list and alert-list bot commands return one compact Mini App entry regardless
+of trip count. See [deployment instructions](MINI_APP_DEPLOY.md)
 and the [design decisions](design/miniapp/README.md).
 
 Set `MINI_APP_URL` to the HTTPS URL of `telegram-app.php`, or keep the existing

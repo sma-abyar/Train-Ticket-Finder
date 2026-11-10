@@ -287,8 +287,26 @@ function tripFollowSummary(array $trip): string
         'selected'=>'هشدار: فقط ' . count(tripFollowedTrains($trip)) . ' قطار انتخابی'][tripFollowMode($trip)];
 }
 
+/** One compact entry, regardless of how many trips the account has. */
+function sendTripMiniAppEntry($chatId, string $view = 'trips'): bool
+{
+    $url = trainMiniAppUrl($view);
+    if ($url === null) { return false; }
+    $active = array_filter(getUserTrips($chatId), static fn($trip)=>!isTripExpired($trip['date']));
+    $count = count($active);
+    $text = $count ? "سفرهای من · {$count} سفر پیش رو\nمسیرها، فیلترها و قطارهای هشدار را یک‌جا مدیریت کن."
+        : "هنوز سفری ثبت نکرده‌ای.\nمسیر و تاریخ اولین سفرت را در مینی‌اپ انتخاب کن.";
+    $rows = $count ? [
+        [['text'=>$view === 'alerts' ? 'مدیریت هشدارهای سفرها' : 'سفرهای من', 'web_app'=>['url'=>$url]]],
+        [['text'=>'سفر تازه', 'web_app'=>['url'=>trainMiniAppUrl('create')]]],
+    ] : [[['text'=>'ثبت اولین سفر', 'web_app'=>['url'=>trainMiniAppUrl('create')]]]];
+    sendMessage($chatId,$text,['inline_keyboard'=>$rows],true,null);
+    return true;
+}
+
 function showTrainAlertTrips($chatId): void
 {
+    if (sendTripMiniAppEntry($chatId,'alerts')) { return; }
     $trips = getUserTrips($chatId);
     $rows = [];
     $db = initDatabase();

@@ -758,6 +758,7 @@ if (isset($update['message']['web_app_data'])) {
             sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: 1):");
             break;
         case 'حذف سفر':
+            if (sendTripMiniAppEntry($chat_id)) { clearUserState($chat_id); break; }
             setUserState($chat_id, 'REMOVE_TRIP');
             showUserTrips($chat_id);
             sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: 1):");
@@ -1085,6 +1086,7 @@ function handleCallbackQuery($callback_query)
         // Start the trip addition process
         handleSetTripCommand($chat_id);
     } elseif ($data === 'remove_trip') {
+        if (sendTripMiniAppEntry($chat_id)) { return; }
         // Fetch the list of trips
         $trips = getUserTrips($chat_id);
         if (empty($trips)) {
@@ -1270,6 +1272,7 @@ function handleSetTripCommand($chat_id)
 
 function handleShowTripsCommand($chat_id)
 {
+    if (sendTripMiniAppEntry($chat_id)) { return; }
     $trips = getUserTrips($chat_id);
 
     // Initialize the inline keyboard with the "افزودن سفر" button
@@ -1730,6 +1733,7 @@ function handleRemoveTravelerListCommand($chat_id, $text)
 // Show all of trips for a user
 function showUserTrips($chat_id)
 {
+    if (sendTripMiniAppEntry($chat_id)) { return; }
     $trips = getUserTrips($chat_id);
     if (empty($trips)) {
         sendMessage($chat_id, "شما هیچ سفری ثبت نکرده‌اید.", getMainMenuKeyboard($chat_id));

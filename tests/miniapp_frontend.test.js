@@ -32,6 +32,7 @@ async function fixture(auth=true){
     let data;if(b.action==='bootstrap')data={today:'2026-11-10',server_time:Math.floor(fakeNow/1000),user_id:'101',cities:[{code:'tehran',text:'تهران'},{code:'mashhad',text:'مشهد'}],approved:true,trips:[trip]};
     else if(b.action==='create_trip'){if(waitCreate)await waitCreate;data={created:true,trip:{...trip,...b.trip}};}
     else if(b.action==='save'){Object.assign(catalog,{mode:b.mode,selected:b.keys,excluded:b.excluded_keys,revision:catalog.revision+1});data=catalog;}
+    else if(b.action==='delete_trip')data={deleted:true,trip_id:b.trip_id};
     else data=catalog;return {ok:true,status:200,json:async()=>({ok:true,data:structuredClone(data)})};};
   const window={TrainCalendar:C,Telegram:{WebApp:{initData:auth?'signed':'',ready(){},expand(){},enableClosingConfirmation(){},disableClosingConfirmation(){}}},matchMedia:()=>({matches:false}),scrollTo(){},confirm:()=>true,addEventListener(){}};
   vm.runInNewContext(fs.readFileSync(require.resolve('../telegram-app.js'),'utf8'),{window,document,location:{href:'https://example.test/telegram-app.php',search:''},fetch,URL,URLSearchParams,crypto,sessionStorage:storage,localStorage:storage,AbortController,setTimeout,clearTimeout,Uint8Array,Intl,Date:FakeDate,console});
@@ -60,5 +61,11 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   const double=await fixture();choose(double,'origin','تهران');choose(double,'destination','مشهد');double.els['quick-dates'].children[1].onclick();await submit(double);await submit(double);
   const release=double.hold(),pending=submit(double);await flush();await submit(double);assert.equal(double.calls.filter(c=>c.action==='create_trip').length,1);assert.equal(double.els.main.inert,true);release();await pending;assert.equal(double.els.main.inert,false);
   const midnight=await fixture();midnight.els['quick-dates'].children[0].onclick();assert.match(midnight.els['selected-date'].textContent,/۱۹/);midnight.advance(60000);assert.equal(midnight.els['selected-date'].textContent,'انتخاب از تقویم شمسی');assert.match(midnight.els.notice.textContent,/روز عوض/);assert.equal(midnight.els['calendar-days'].children.find(e=>e.dataset.date==='1405-08-19').disabled,true);
+  const removal=await fixture(),removeButton=()=>removal.els['trip-list'].children[0].children[3].children[1];
+  removeButton().onclick();assert.equal(removal.els['delete-dialog'].open,true);assert.match(removal.els['delete-trip-summary'].textContent,/تهران به مشهد/);
+  removal.els['cancel-delete'].onclick();assert.equal(removal.calls.filter(c=>c.action==='delete_trip').length,0);
+  removeButton().onclick();removal.fail();await removal.els['confirm-delete'].onclick();assert.ok(removal.els['trip-list'].children[0].children.length>0,'Failed removal keeps the trip');assert.equal(removal.els['delete-dialog'].open,false);
+  removeButton().onclick();const deleting=removal.els['confirm-delete'].onclick();await removal.els['confirm-delete'].onclick();await deleting;
+  assert.equal(removal.calls.filter(c=>c.action==='delete_trip').length,2,'One failed attempt and one confirmed success; double clicks do not resend');assert.match(removal.els['trip-list'].children[0].textContent,/هنوز سفری/);
   console.log('PASS Unified UI: secure entry, validation, city/date choice, back navigation, count/partial persistence, retry identity, sold-out selection, search and conflict drafts');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -5,7 +5,7 @@
   const en=s=>String(s).replace(/[۰-۹٠-٩]/g,c=>String(c.charCodeAt(0)>1775?c.charCodeAt(0)-1776:c.charCodeAt(0)-1632));
   const norm=s=>en(s).replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\s‌]/g,'').toLowerCase();
   const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
-  let boot, bootAt=0, today, todayDate, month, year, step=1, view='create', count=1, cityTarget, busy=false, editTrip=null, createdTrip=null;
+  let boot, bootAt=0, today, todayDate, month, year, step=1, view='create', count=1, cityTarget, busy=false, editTrip=null, createdTrip=null, deletingTrip=null;
   let draft={origin:'',destination:'',date:'',count:1,type:0,coupe:false,allow_partial_capacity:false,search_filters:{}}, requestId='', lockedPayload=null;
   let catalog=null, mode='all', selected=new Set(), excluded=new Set(), savedAlerts='', alertDirty=false, preferencesDirty=false;
   const canonical=()=>JSON.stringify([mode,[...selected].sort(),[...excluded].sort()]);
@@ -108,7 +108,16 @@
     boot.trips.forEach(trip=>{const card=document.createElement('article');card.className='trip-card';const top=document.createElement('div');top.className='trip-top';const title=document.createElement('h2');title.textContent=routeText(trip);const pill=document.createElement('span');pill.className='pill';pill.textContent=modeLabel(trip.mode);top.append(title,pill);
       const meta=document.createElement('div');meta.className='trip-meta';const date=document.createElement('span'),seats=document.createElement('span');date.textContent=dateText(trip.date);seats.textContent=fa(trip.count)+' صندلی';meta.append(date,seats);
       const alerts=document.createElement('button');alerts.type='button';alerts.className='text-button';alerts.textContent='انتخاب قطارها و تنظیم هشدار ←';alerts.onclick=()=>openAlerts(trip.id);
-      const prefs=document.createElement('button');prefs.type='button';prefs.className='text-button';prefs.textContent='ظرفیت، ساعت و فیلترهای سفر ←';prefs.onclick=()=>{if(!showView('create'))return;editTrip=trip;fillFields(trip);setStep(2);};card.append(top,meta,alerts,prefs);list.append(card);});}
+      const prefs=document.createElement('button');prefs.type='button';prefs.className='text-button trip-preferences';prefs.textContent='ترجیحات و فیلترها';prefs.onclick=()=>{if(!showView('create'))return;editTrip=trip;fillFields(trip);setStep(2);};
+      const remove=document.createElement('button');remove.type='button';remove.className='text-button delete-trip';remove.textContent='حذف';remove.setAttribute('aria-label','حذف سفر '+routeText(trip)+' '+dateText(trip.date));remove.onclick=()=>{if(busy)return;deletingTrip=trip;$('delete-trip-summary').textContent=routeText(trip)+' · '+dateText(trip.date);$('delete-dialog').showModal();$('cancel-delete').focus();};
+      const actions=document.createElement('div');actions.className='trip-actions';actions.append(prefs,remove);card.append(top,meta,alerts,actions);list.append(card);});}
+  async function deleteTrip(){
+    if(busy||!deletingTrip)return;const trip=deletingTrip;setBusy(true);$('confirm-delete').disabled=true;$('cancel-delete').disabled=true;
+    try{await api('delete_trip',{trip_id:trip.id,revision:trip.revision});boot.trips=boot.trips.filter(t=>t.id!==trip.id);renderTrips();notice('سفر حذف شد و هشدارهایش متوقف شدند.');}
+    catch(error){if(error.status===404||error.status===409){try{const fresh=await api('bootstrap');boot.trips=fresh.trips;renderTrips();}catch(_){}}notice(error.message,true);}
+    finally{$('delete-dialog').close();deletingTrip=null;setBusy(false);$('confirm-delete').disabled=false;$('cancel-delete').disabled=false;$('trips-title').focus();}
+  }
+  $('confirm-delete').onclick=deleteTrip;$('cancel-delete').onclick=()=>{$('delete-dialog').close();deletingTrip=null;};$('delete-dialog').addEventListener('cancel',event=>{if(busy)event.preventDefault();else deletingTrip=null;});
   async function submit(event){event.preventDefault();if(busy)return;syncToday();formError('');try{
     if(!editTrip&&step>1&&(!draft.date||draft.date<today)){setStep(1);throw new Error('روز حرکت را دوباره انتخاب کن؛ تاریخ قبلی گذشته است.');}
     if(step===1){if(!draft.origin){$('origin').focus();throw new Error('ابتدا شهر مبدأ را انتخاب کن.');}if(!draft.destination||draft.origin===draft.destination){$('destination').focus();throw new Error('یک مقصد متفاوت انتخاب کن.');}if(!draft.date||draft.date<today){$('open-calendar').focus();throw new Error('روز حرکت را از امروز به بعد انتخاب کن.');}setStep(2);return;}

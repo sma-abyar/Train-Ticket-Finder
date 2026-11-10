@@ -36,6 +36,8 @@ try {
         $data = miniAppCreate($db, $chat, $body);
     } elseif ($action === 'update_preferences') {
         $data = miniAppPreferences($db, $chat, $body);
+    } elseif ($action === 'delete_trip') {
+        $data = miniAppDeleteTrip($db, $chat, $body);
     } elseif (in_array($action, ['load','refresh','save'], true)) {
         if (!is_int($body['trip_id'] ?? null) || $body['trip_id'] < 1) { throw new InvalidArgumentException('سفر معتبر نیست.', 400); }
         $trip = ownedFollowTrip($db, $body['trip_id'], $chat);

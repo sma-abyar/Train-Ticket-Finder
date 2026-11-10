@@ -520,11 +520,31 @@ if (isset(getMainMenuKeyboard(101)['keyboard'][0][0]['web_app'])) {
     throw new RuntimeException('Authenticated entry must not use a reply-keyboard web app');
 }
 handleSetTripCommand(101);
+handleShowTripsCommand('707');
+showTrainAlertTrips('707');
+showUserTrips('707');
+handleShowTripsCommand('808');
 PHP);
     $before=count($readRequests());
     runPhp(array_merge($php,[$temp.'/launch-app.php']),$temp);
     $launcher=$newMessages($before);
-    verify(count($launcher)===1 && str_contains($launcher[0]['payload']['reply_markup'],'telegram-app.php?view=create'),'Registration uses an inline authenticated launcher');
+    verify(count($launcher)===5 && str_contains($launcher[0]['payload']['reply_markup'],'telegram-app.php?view=create'),'Registration uses an inline authenticated launcher');
+    foreach(array_slice($launcher,1,3) as $entry){
+        $buttons=array_merge(...json_decode($entry['payload']['reply_markup'],true)['inline_keyboard']);
+        verify(count($buttons)===2 && count(array_filter($buttons,static fn($button)=>isset($button['web_app'])))===2,'Twenty trips must produce one compact Mini App entry, not twenty chat cards');
+        verify(preg_match_all('/./us',$entry['payload']['text'])<200 && !str_contains($entry['payload']['reply_markup'],'trip_settings_'),'Trip details must stay in the Mini App');
+    }
+    $emptyEntry=json_decode($launcher[4]['payload']['reply_markup'],true)['inline_keyboard'];
+    verify(count($emptyEntry)===1 && str_contains($emptyEntry[0][0]['web_app']['url'],'view=create'),'Empty accounts get one first-trip action');
+    $remove=['init_data'=>$auth,'action'=>'delete_trip','trip_id'=>$id,'revision'=>1];
+    $foreignRemove=$remove;$foreignRemove['init_data']=$authFor(202);
+    verify($app($foreignRemove)[0]===404,'Foreign trips cannot be deleted');
+    $staleRemove=$remove;$staleRemove['revision']=0;
+    verify($app($staleRemove)[0]===409,'Changed trips cannot be deleted from stale UI');
+    [$status,$deleted]=$app($remove);
+    verify($status===200 && $deleted['data']['deleted']===true,'Confirmed deletion removes the owned trip');
+    verify($app(['init_data'=>$auth,'action'=>'load','trip_id'=>$id])[0]===404,'Removed trips cannot receive more alerts');
+    echo "PASS Compact trips entry: one message for twenty trips, common alerts/list entry, empty state and owned confirmed deletion\n";
     // Reproduce a realistic long provider ID, a rejected Telegram send and a
     // falling capacity before retry. None may mark an undelivered alert as sent.
     file_put_contents($temp.'/delivery-scenario.php', <<<'PHP'

@@ -127,3 +127,18 @@ function miniAppPreferences(SQLite3 $db, string $chat, array $body): array
         return miniAppTrip($saved);
     } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
 }
+
+function miniAppDeleteTrip(SQLite3 $db, string $chat, array $body): array
+{
+    if (!is_int($body['trip_id'] ?? null) || $body['trip_id'] < 1 || !is_int($body['revision'] ?? null)) {
+        throw new InvalidArgumentException('اطلاعات سفر معتبر نیست.',400);
+    }
+    if (!$db->exec('BEGIN IMMEDIATE')) { throw new RuntimeException($db->lastErrorMsg()); }
+    try {
+        $trip=ownedFollowTrip($db,$body['trip_id'],$chat);
+        if ((int)$trip['follow_revision']!==$body['revision']) { throw new RuntimeException('سفر تغییر کرده است؛ فهرست را تازه کن و دوباره تصمیم بگیر.',409); }
+        followSql($db,'DELETE FROM user_trips WHERE id=:id AND chat_id=:chat',[':id'=>$body['trip_id'],':chat'=>$chat]);
+        if (!$db->exec('COMMIT')) { throw new RuntimeException($db->lastErrorMsg()); }
+        return ['deleted'=>true,'trip_id'=>$body['trip_id']];
+    }catch(Throwable $error){$db->exec('ROLLBACK');throw $error;}
+}
