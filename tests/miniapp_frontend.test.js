@@ -24,8 +24,8 @@ async function fixture(auth=true){
   const calls=[],session=new Map(),storage={getItem:k=>session.get(k)||null,setItem:(k,v)=>session.set(k,v),removeItem:k=>session.delete(k)};
   let fail=null,waitCreate=null,releaseCreate=null;
   const catalog={trip_id:1,route:'tehran-mashhad',route_title:'تهران به مشهد',date:'1405-08-20',mode:'all',selected:[],excluded:[],revision:0,updated_at:1,options:[
-    {key:'a',number:'188',time:'07:45',company:'فدک',wagon:'<img onerror=alert(1)>',capacity:0,price:1000000,missing:false},
-    {key:'b',number:'189',time:'12:30',company:'رجا',wagon:'زندگی',capacity:4,price:2000000,missing:false}]};
+    {key:'a',number:'188',time:'07:45',company:'فدک',wagon:'<img onerror=alert(1)>',capacity:0,price:1000000,missing:false,eligible:false,label:'ناموجود است'},
+    {key:'b',number:'189',time:'12:30',company:'رجا',wagon:'زندگی',capacity:4,price:2000000,missing:false,eligible:false,label:'با فیلتر ساعت مطابق نیست',send_error_code:429}]};
   const trip={id:1,route:'tehran-mashhad',route_title:'تهران به مشهد',date:'1405-08-20',count:2,type:0,coupe:false,allow_partial_capacity:false,search_filters:{},mode:'all',revision:0};
   const fetch=async(url,opts)=>{assert.equal(url.searchParams.has('init_data'),false);const b=JSON.parse(opts.body);assert.equal(b.init_data,'signed');calls.push(b);
     if(fail){const error=fail;fail=null;return {ok:false,status:409,json:async()=>({ok:false,error})};}
@@ -51,6 +51,7 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   ui.fail();await submit(ui);const failed=ui.calls.at(-1);assert.equal(failed.action,'create_trip');assert.equal(ui.els['step-3'].hidden,false);
   await submit(ui);const retry=ui.calls.at(-1);assert.equal(retry.request_id,failed.request_id);assert.deepEqual(retry.trip,failed.trip);assert.equal(ui.els['success-view'].hidden,false);
   await ui.els['success-alerts'].onclick();assert.equal(ui.els['alerts-view'].hidden,false);
+  const secondCard=ui.els['train-list'].children[1].children[1];assert.ok(secondCard.children.some(e=>e.textContent==='با فیلتر ساعت مطابق نیست'));assert.ok(secondCard.children.some(e=>e.textContent.includes('محدودیت تلگرام')));
   ui.modes.find(i=>i.value==='selected').onchange();let checks=ui.els['train-list'].children.map(e=>e.children[0]);assert.equal(checks[0].checked,false);
   checks[0].checked=true;checks[0].onchange();await ui.els['save-alerts'].onclick();assert.deepEqual(ui.calls.at(-1).keys,['a']);assert.match(ui.els['alert-count'].textContent,/ذخیره‌شده/);
   ui.els['train-search'].value='نامربوط';ui.els['train-search'].oninput();assert.equal(ui.els['train-empty'].hidden,false);assert.match(ui.els['alert-count'].textContent,/۱/);

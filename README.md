@@ -210,6 +210,8 @@ followed-alert delivery state.
 
 ## Usage
 
+For notification delivery failures, see [delivery diagnostics and fixes](NOTIFICATION_DELIVERY.md).
+
 The Telegram unified Mini App now handles complete trip creation (route, Jalali
 date, passengers, quota, coupe and optional local filters), owned trip preferences
 and train alert selection in one interface. See [deployment instructions](MINI_APP_DEPLOY.md)

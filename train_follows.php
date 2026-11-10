@@ -338,7 +338,7 @@ final class TrainFollowAlerts
                         [':id'=>(int) $trip['id'], ':key'=>$key])->fetchArray(SQLITE3_ASSOC);
                     $before = (int) ($old['stage'] ?? 0);
                     $stage = $stages[$key] ?? 0;
-                    $pending = $stage > $before ? 1 : ($stage === $before ? (int) ($old['pending'] ?? 0) : 0);
+                    $pending = $stage === 0 ? 0 : ($stage > $before ? 1 : (int)($old['pending'] ?? 0));
                     followSql($this->db, 'INSERT INTO train_follow_delivery (trip_id, train_key, stage, pending) VALUES (:id,:key,:stage,:pending)
                         ON CONFLICT(trip_id,train_key) DO UPDATE SET stage=excluded.stage, pending=excluded.pending,
                         claim_token=CASE WHEN stage=excluded.stage THEN claim_token ELSE NULL END,

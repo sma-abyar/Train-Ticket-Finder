@@ -347,6 +347,7 @@ $tests['a stale delivery lease is recovered after a worker crash'] = static func
 
 require __DIR__ . '/train_follows_test.php';
 require __DIR__ . '/miniapp_test.php';
+require __DIR__ . '/telegram_delivery_test.php';
 
 $failed = 0;
 foreach ($tests as $name => $test) {

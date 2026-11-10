@@ -34,13 +34,32 @@ function followPickerData(SQLite3 $db, array $trip, bool $refresh = false): arra
     $catalog = followCatalogForTrip($db, $trip, $refresh);
     $first = $catalog['tickets'][0] ?? [];
     $routeTitle = isset($first['from_title'], $first['to_title']) ? $first['from_title'] . ' به ' . $first['to_title'] : $trip['route'];
+    $options = trainFollowOptions($trip, $catalog);
+    $approved = (bool)followSql($db,'SELECT 1 FROM users WHERE chat_id=:chat AND approved=1',[':chat'=>(string)$trip['chat_id']])->fetchArray(SQLITE3_NUM);
+    $tickets = [];
+    foreach ($catalog['tickets'] ?? [] as $ticket) { $tickets[trainFollowKey($ticket)] = $ticket; }
+    $deliveries = [];
+    $result = followSql($db,'SELECT * FROM telegram_ticket_delivery WHERE trip_id=:id AND kind=\'ticket\'',[':id'=>(int)$trip['id']]);
+    while ($row=$result->fetchArray(SQLITE3_ASSOC)) { $deliveries[$row['train_key']]=$row; }
+    foreach ($options as &$option) {
+        $eligibility = isset($tickets[$option['key']]) ? ticketNotificationEligibility($trip,$tickets[$option['key']],$approved)
+            : ['eligible'=>false,'reason'=>'missing','label'=>'این قطار در فهرست فعلی فروشنده نیست.'];
+        $option += $eligibility;
+        $delivery = $deliveries[$option['key']] ?? null;
+        $option['last_sent_at'] = $delivery['last_success_at'] ?? null;
+        $option['send_error_code'] = $delivery ? (int)$delivery['error_code'] : null;
+    }
+    unset($option);
+    $poll = followSql($db,'SELECT * FROM ticket_poll_status WHERE trip_id=:id',[':id'=>(int)$trip['id']])->fetchArray(SQLITE3_ASSOC);
+    $worker = $db->querySingle('SELECT started_at,finished_at,error FROM ticket_worker_status WHERE id=1',true);
     return [
         'trip_id'=>(int) $trip['id'], 'route'=>$trip['route'], 'date'=>$trip['date'],
         'route_title'=>$routeTitle,
         'mode'=>tripFollowMode($trip), 'revision'=>(int) $trip['follow_revision'],
         'selected'=>array_column(tripFollowedTrains($trip), 'key'),
         'excluded'=>array_column(tripExcludedTrains($trip), 'key'),
-        'options'=>trainFollowOptions($trip, $catalog), 'updated_at'=>$catalog['updated_at'] ?? null,
+        'options'=>$options, 'updated_at'=>$catalog['updated_at'] ?? null,
+        'last_poll'=>$poll ?: null, 'worker'=>$worker ?: null,
         'stale'=>$catalog === null || time()-$catalog['updated_at'] > 120,
     ];
 }
@@ -290,7 +309,7 @@ function showTrainAlertTrips($chatId): void
 
 function sendTrainResultsFooter(array $trip): void
 {
-    sendMessage($trip['chat_id'], "اگر دنبال قطار خاصی هستید و پیامش نیامده، ممکن است فعلاً موجود نباشد یا با ظرفیت و فیلترهای سفرتان همخوان نباشد.\nاز فهرست کامل این سفر انتخابش کنید تا اگر موجود و مطابق تنظیمات شد، خبرتان کنیم.",
+    sendMessage($trip['chat_id'], 'تنظیم هشدار سفر '.translateRoute($trip['route']).' · '.$trip['date']."\nاگر دنبال قطار خاصی هستید و پیامش نیامده، ممکن است فعلاً موجود نباشد یا با ظرفیت و فیلترهای سفرتان همخوان نباشد.\nاز فهرست کامل این سفر انتخابش کنید تا اگر موجود و مطابق تنظیمات شد، خبرتان کنیم.",
         ['inline_keyboard'=>[
             [['text'=>'انتخاب قطارهای هشدار این سفر', 'callback_data'=>'train_follow_' . $trip['id']]],
             [['text'=>'فیلترهای این سفر', 'callback_data'=>'trip_settings_' . $trip['id']],

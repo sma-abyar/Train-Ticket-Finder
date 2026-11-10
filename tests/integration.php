@@ -35,11 +35,14 @@ try {
     $address = stream_socket_get_name($socket, false);
     fclose($socket);
     $base = 'http://' . $address;
-    foreach (['check_tickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
+    foreach (['check_tickets.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
-        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','trip_app.php','train_cities.json'] as $file) {
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
+    // Real rate limiting is verified with an injected clock in unit tests; keep
+    // mock HTTP scenarios fast without adding a production bypass setting.
+    file_put_contents($temp.'/telegram_delivery.php',str_replace(['CHAT_INTERVAL = 1.05','GLOBAL_INTERVAL = 0.04'],['CHAT_INTERVAL = 0.0','GLOBAL_INTERVAL = 0.0'],file_get_contents($root.'/telegram_delivery.php')));
     // Replace service origins only in the test copy; no real bookings or messages.
     file_put_contents($temp . '/bot.php', str_replace(['https://api.telegram.org', 'https://ghasedak24.com'], $base, file_get_contents($root . '/bot.php')));
     file_put_contents($temp . '/.env', "BOT_TOKEN=TEST\nADMIN_CHAT_ID=999\nURL=$base/search\nDB_PATH=$temp/users.db\nHEADERS={}\n");
@@ -71,6 +74,20 @@ if ($path === '/search') {
         'cost'=>1000000, 'owner_name'=>'فدک', 'iscompartment'=>1, 'compartment_capacity'=>4,
     ]]]]]);
 } elseif (in_array($path, ['/botTEST/sendMessage','/botTEST/editMessageText','/botTEST/answerCallbackQuery'], true)) {
+    if ($path==='/botTEST/sendMessage') {
+        $markup=json_decode($payload['reply_markup'] ?? '{}',true);
+        foreach ($markup['inline_keyboard'] ?? [] as $row) foreach ($row as $button) {
+            if (isset($button['callback_data']) && (strlen($button['callback_data'])>64 || strlen($button['callback_data'])<1)) {
+                http_response_code(400);echo '{"ok":false,"error_code":400,"description":"BUTTON_DATA_INVALID"}';return;
+            }
+        }
+        if (is_file(__DIR__.'/telegram-error.json')) {
+            $error=json_decode(file_get_contents(__DIR__.'/telegram-error.json'),true);
+            if (!isset($error['chat_id']) || (string)$error['chat_id']===(string)$payload['chat_id']) {
+                http_response_code($error['error_code']);echo json_encode($error+['ok'=>false]);return;
+            }
+        }
+    }
     echo '{"ok":true}';
 } elseif ($path === '/train/reservation/ticket-1/0') {
     echo '{"rsid":"mock-reservation"}';
@@ -122,7 +139,7 @@ saveUserTrip('404', $trip);
 $db->exec("UPDATE user_trips SET no_counting_notif=1, no_ticket_notif=1, bad_data_notif=1 WHERE chat_id='101'");
 PHP);
     runPhp(array_merge($php, [$temp . '/seed.php']), $temp);
-    runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
+    runPhp(array_merge($php, [$temp . '/runFetchTickets.php']), $temp);
     $readRequests = static function () use ($temp) {
         return array_map(static fn($line) => json_decode($line, true), file($temp . '/requests.jsonl', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES));
     };
@@ -478,12 +495,76 @@ PHP);
     runPhp(array_merge($php,[$temp.'/launch-app.php']),$temp);
     $launcher=$newMessages($before);
     verify(count($launcher)===1 && str_contains($launcher[0]['payload']['reply_markup'],'telegram-app.php?view=create'),'Registration uses an inline authenticated launcher');
+    // Reproduce a realistic long provider ID, a rejected Telegram send and a
+    // falling capacity before retry. None may mark an undelivered alert as sent.
+    file_put_contents($temp.'/delivery-scenario.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);
+require __DIR__.'/bot.php';
+$db=initDatabase();
+$db->exec("UPDATE user_trips SET follow_mode='none' WHERE id<>1");
+$db->exec("UPDATE user_trips SET count=2,allow_partial_capacity=1,search_filters='{}' WHERE id=1");
+$trip=$db->querySingle('SELECT * FROM user_trips WHERE id=1',true);
+$ticket=['id'=>str_repeat('long-provider-id-',10).'_tail','train_number'=>'۹۹۹','train_number_en'=>999,'time'=>'۱۰:۰۰',
+    'from_title'=>'تهران','to_title'=>'مشهد','wagon_name'=>'نام [قطار_آزمایشی] *','jdate_fa'=>'1405-08-20','counting_en'=>3,'counting'=>'۳',
+    'cost_title'=>'10000000','cost'=>1000000,'owner_name'=>'فدک','owner'=>25,'wagon_type'=>503,'source'=>'raja','iscompartment'=>1,'compartment_capacity'=>4];
+storeTrainCatalog($db,TicketSearchBatch::payload($trip),[$ticket]);
+saveTrainFollows($db,1,'101','selected',[trainFollowKey($ticket)],(int)$trip['follow_revision']);
+file_put_contents(__DIR__.'/override-search.json',json_encode(['data'=>['status'=>'success','data'=>['departure'=>[$ticket]]]],JSON_UNESCAPED_UNICODE));
+PHP);
+    runPhp(array_merge($php,[$temp.'/delivery-scenario.php']),$temp);
+    file_put_contents($temp.'/telegram-error.json',json_encode(['chat_id'=>'101','error_code'=>429,'description'=>'Too Many Requests','parameters'=>['retry_after'=>30]]));
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp,'Telegram delivery:');
+    $failed=$newMessages($before);
+    verify(count($failed)===1,'One rate-limit rejection must not fan out into more sends');
+    verify(!isset($failed[0]['payload']['parse_mode']),'Provider text must not be parsed as Markdown');
+    verify(str_contains($failed[0]['payload']['text'],'[قطار_آزمایشی] *'),'Provider punctuation must remain literal text');
+    $buttons=array_merge(...json_decode($failed[0]['payload']['reply_markup'],true)['inline_keyboard']);
+    $tokens=array_values(array_filter($buttons,static fn($b)=>str_starts_with($b['callback_data']??'','reserve_token_')));
+    verify(count($tokens)===1 && strlen($tokens[0]['callback_data'])<=64,'Long provider IDs must produce usable short reservation buttons');
+    $db=new SQLite3($temp.'/users.db');
+    verify((int)$db->querySingle('SELECT pending FROM train_follow_delivery WHERE trip_id=1')===1,'Failed delivery remains pending');
+    verify((int)$db->querySingle("SELECT COUNT(*) FROM telegram_ticket_delivery WHERE trip_id=1 AND error_code=429")===1,'Telegram rejection is recorded');
+    $db->close();
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===0,'A durable cooldown avoids hammering Telegram on the next cron');
+    $db=new SQLite3($temp.'/users.db');$db->exec('UPDATE telegram_send_limits SET not_before=0');$db->close();
+    unlink($temp.'/telegram-error.json');
+    $inventory=json_decode(file_get_contents($temp.'/override-search.json'),true);$inventory['data']['data']['departure'][0]['counting_en']=1;$inventory['data']['data']['departure'][0]['counting']='۱';
+    file_put_contents($temp.'/override-search.json',json_encode($inventory,JSON_UNESCAPED_UNICODE));
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===2,'An undelivered alert retries at still-allowed partial capacity, then sends one footer');
+    [$status,$diagnosticPicker]=$app(['init_data'=>$auth,'action'=>'load','trip_id'=>1]);
+    verify($status===200 && $diagnosticPicker['data']['options'][0]['eligible']===true,'Mini App explains eligibility for the exact user trip');
+    verify($diagnosticPicker['data']['options'][0]['last_sent_at']!==null && $diagnosticPicker['data']['options'][0]['send_error_code']===0,'Mini App distinguishes successful Telegram acceptance');
+    verify($diagnosticPicker['data']['last_poll']['sent_count']===1 && $diagnosticPicker['data']['worker']['finished_at']!==null,'Cron and per-trip delivery checkpoints are available');
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===0,'A successfully delivered selected train stays quiet in a steady state');
+    $process=proc_open(array_merge($php,[$temp.'/diagnose_notifications.php','--trip=1']),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,$temp);
+    fclose($pipes[0]);$report=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
+    verify(proc_close($process)===0 && $errors==='' && json_decode($report,true)['trip']['trip_id']===1,'Read-only diagnostics must work without sending messages');
+    verify(!str_contains($report,'BOT_TOKEN') && !str_contains($report,'chat_id'),'Diagnostics must not expose credentials or chat identifiers');
+    $db=new SQLite3($temp.'/users.db');$db->exec("UPDATE user_trips SET follow_mode='all',follow_revision=follow_revision+1,no_ticket_notif=0 WHERE id=1");$db->close();
+    file_put_contents($temp.'/override-search.json','{"data":{"status":"success","data":{"departure":[]}}}');
+    file_put_contents($temp.'/telegram-error.json',json_encode(['chat_id'=>'101','error_code'=>429,'description'=>'Too Many Requests','parameters'=>['retry_after'=>30]]));
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp,'Telegram delivery:');
+    $db=new SQLite3($temp.'/users.db');
+    verify((int)$db->querySingle('SELECT no_ticket_notif FROM user_trips WHERE id=1')===0,'Rejected no-ticket notices must not be permanently suppressed');
+    $db->exec('UPDATE telegram_send_limits SET not_before=0');$db->close();unlink($temp.'/telegram-error.json');
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    $db=new SQLite3($temp.'/users.db');verify((int)$db->querySingle('SELECT no_ticket_notif FROM user_trips WHERE id=1')===1,'Successful notice sets its suppression flag');$db->close();
+    echo "PASS Delivery regression: long callback, raw provider punctuation, durable 429 cooldown, lower-capacity retry, acceptance status and quiet steady state\n";
     echo "PASS Unified Mini App API: signed bootstrap, complete create, retry, conflicts, local preferences and ownership\n";
     echo "PASS Telegram worker: shared requests, per-user buttons and flags, expiry, fresh cycles and cron locking\n";
     echo "PASS Capacity, local filters, setup/edit callbacks, ownership, partial links and wheelchair payload\n";
     echo "PASS Follow selection: full catalog, signed mini app API, quiet steady states, reopening, edits and pause\n";
     echo "PASS Default all, per-message mute/restore, future trains, trip footer and menu controls\n";
 } finally {
+    if (isset($db) && $db instanceof SQLite3) { try { $db->close(); } catch (Throwable $ignored) {} }
     if (is_resource($server)) {
         proc_terminate($server);
         proc_close($server);

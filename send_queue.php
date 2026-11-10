@@ -1,11 +1,16 @@
 <?php
 
-require 'bot.php';
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+chdir(__DIR__);
+$lock=fopen(__DIR__.'/message-queue.lock','c');
+if(!$lock || !flock($lock,LOCK_EX|LOCK_NB)){exit;}
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);
+require __DIR__.'/bot.php';
 // اتصال به دیتابیس صف پیام‌ها
 $queueDb = initQueueDatabase();
 
 // دریافت تمام پیام‌های ارسال نشده
-$stmt = $queueDb->query("SELECT id, chat_id, message FROM message_queue WHERE sent = 0");
+$stmt = $queueDb->query("SELECT id, chat_id, message FROM message_queue WHERE sent = 0 ORDER BY id");
 
 $messages = [];
 while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {

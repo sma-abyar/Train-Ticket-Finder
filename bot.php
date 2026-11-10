@@ -5,6 +5,7 @@ require_once __DIR__ . '/expired_trips.php';
 require_once __DIR__ . '/trip_preferences.php';
 require_once __DIR__ . '/trip_filter_ui.php';
 require_once __DIR__ . '/train_follow_bot.php';
+require_once __DIR__ . '/telegram_delivery.php';
 
 // env file loader
 function loadEnv($filePath)
@@ -118,6 +119,7 @@ function initDatabase()
     )");
     ensureTripPreferencesSchema($db);
     ensureTrainFollowTables($db);
+    ensureTelegramDeliveryTables($db);
 
     $db->exec("CREATE TABLE IF NOT EXISTS travelers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,9 +352,11 @@ function fetchTicketsForAllUsers()
     $db->close();
 
     $batch = new TicketSearchBatch('requestTicketSearch');
+    $footers = [];
     foreach ($trips as $trip) {
-        fetchTickets($trip, $batch);
+        fetchTickets($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
     }
+    sendDeferredTicketFooters($footers);
 }
 
 // Send requset to get ticket for a user
@@ -361,8 +365,19 @@ function processUserTrips($chat_id)
     cleanupExpiredTrips((string) $chat_id);
     $trips = getUserTrips($chat_id);
     $batch = new TicketSearchBatch('requestTicketSearch');
+    $footers = [];
     foreach ($trips as $trip) {
-        fetchTickets($trip, $batch);
+        fetchTickets($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
+    }
+    sendDeferredTicketFooters($footers);
+}
+
+function sendDeferredTicketFooters(array $trips): void
+{
+    if (!$trips) { return; }
+    $db=initDatabase();
+    foreach ($trips as $trip) {
+        if (!isTripExpired($trip['date']) && tripFollowRevisionCurrent($db,$trip)) { sendTrainResultsFooter($trip); }
     }
 }
 
@@ -398,20 +413,22 @@ function requestTicketSearch(array $postFields)
         "User-Agent: Mozilla/5.0"
     ]);
     $response = curl_exec($ch);
+    $httpStatus = (int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
+    $curlError = curl_errno($ch);
     curl_close($ch);
-    $data = $response === false ? null : json_decode($response, true);
+    $data = is_string($response) && $httpStatus>=200 && $httpStatus<300 ? json_decode($response, true) : null;
     $tickets = trainSearchTickets($data);
     if ($tickets !== null) {
         $db = initDatabase();
         storeTrainCatalog($db, $postFields, $tickets);
     } else {
-        error_log('Upstream train search unavailable for search ' . substr(trainCatalogKey($postFields), 0, 12));
+        error_log('Upstream train search unavailable for search ' . substr(trainCatalogKey($postFields), 0, 12) . ' http='.$httpStatus.' curl_errno='.$curlError);
     }
     return $data;
 }
 
 // Keep each user's existing messages, notification flags and reservation buttons.
-function fetchTickets($userTrip, ?TicketSearchBatch $batch = null)
+function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $deferFooter = null)
 {
     // A check can cross midnight after the initial cleanup.
     if (isTripExpired($userTrip['date'])) {
@@ -427,7 +444,9 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null)
     $customSelection = in_array(tripFollowMode($userTrip), ['selected', 'except'], true);
     $sentTicketCount = 0;
     $notificationDb = initDatabase();
-    $followAlerts = $selectedOnly ? new TrainFollowAlerts(initDatabase()) : null;
+    $followAlerts = $selectedOnly ? new TrainFollowAlerts($notificationDb) : null;
+    $eligibleCount = $failedCount = $suppressedCount = 0;
+    $travelerLists = null;
     $route_title = '';
     $departure = trainSearchTickets($data);
     if ($departure !== null) {
@@ -440,64 +459,76 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null)
                 $route_title = "{$ticket['from_title']} به {$ticket['to_title']}";
                 if (ticketIsFollowed($ticket, $userTrip) && ticketMatchesCapacity($ticket, $userTrip) && ticketMatchesLocalFilters($ticket, $userTrip)) {
                     $found = true;
+                    $eligibleCount++;
                     if (!tripFollowRevisionCurrent($notificationDb, $userTrip)) {
                         continue;
                     }
                     $claim = $followAlerts !== null ? $followAlerts->claim($userTrip, trainFollowKey($ticket)) : null;
                     if ($followAlerts !== null && $claim === null) {
+                        $suppressedCount++;
                         continue;
                     }
-                    $message = "🎟 *بلیط موجود است* 🎟\n"
-                        . "📝 *آیدی سفر*: {$userTrip['id']} - {$route_title}\n"
-                        . "🚂 *شماره قطار*: {$ticket['train_number']}\n"
-                        . "🚋 *نام قطار*: {$ticket['wagon_name']}\n"
-                        . "💺 *نوع بلیط*: " . getTripType($userTrip['type']) . "\n"
-                        . "🗓 *تاریخ حرکت*: {$ticket['jdate_fa']}\n"
-                        . "⏰ *زمان حرکت*: {$ticket['time']}\n"
-                        . "📊 *ظرفیت باقی‌مانده*: {$ticket['counting']}\n"
-                        . "💰 *قیمت*: {$ticket['cost_title']} ریال\n";
+                    $message = "🎟 بلیط موجود است 🎟\n"
+                        . "📝 آیدی سفر: {$userTrip['id']} - {$route_title}\n"
+                        . "🚂 شماره قطار: {$ticket['train_number']}\n"
+                        . "🚋 نام قطار: {$ticket['wagon_name']}\n"
+                        . "💺 نوع بلیط: " . getTripType($userTrip['type']) . "\n"
+                        . "🗓 تاریخ حرکت: {$ticket['jdate_fa']}\n"
+                        . "⏰ زمان حرکت: {$ticket['time']}\n"
+                        . "📊 ظرفیت باقی‌مانده: {$ticket['counting']}\n"
+                        . "💰 قیمت: {$ticket['cost_title']} ریال\n";
                     if (ticketAvailableSeats($ticket) < (int) $userTrip['count']) {
-                        $message .= "⚠️ *ظرفیت کمتر از درخواست شماست*: " . ticketAvailableSeats($ticket)
+                        $message .= "⚠️ ظرفیت کمتر از درخواست شماست: " . ticketAvailableSeats($ticket)
                             . " نفر از {$userTrip['count']} نفر.\n";
                     }
 
                     // گرفتن لیست‌های مسافران برای این کاربر
-                    $travelerLists = listTravelerLists($userTrip['chat_id']);
+                    $travelerLists = $travelerLists ?? listTravelerLists($userTrip['chat_id']);
 
                     // ایجاد پیام و دکمه‌های جدید
                     $messageData = modifyTicketMessage($message, $userTrip, $ticket, $travelerLists);
 
                     // ارسال پیام با دکمه‌های جدید
-                    $sent = sendMessage($userTrip['chat_id'], $messageData['message'], $messageData['reply_markup']);
+                    // Provider text can contain Markdown punctuation. Plain text is safe
+                    // and keeps one malformed train name from rejecting the whole alert.
+                    $sent = sendMessage($userTrip['chat_id'], $messageData['message'], $messageData['reply_markup'], true, null,
+                        ['kind'=>'ticket','trip_id'=>(int)$userTrip['id'],'train_key'=>trainFollowKey($ticket)]);
                     if ($sent) {
                         $sentTicketCount++;
+                    } else {
+                        $failedCount++;
                     }
                     if ($followAlerts !== null) {
                         $followAlerts->complete((int) $userTrip['id'], trainFollowKey($ticket), $claim, $sent);
                     }
 
-                    updateNotificationStatus($userTrip['id'], 'no_counting_notif', 0);
-                    updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 0);
-                    updateNotificationStatus($userTrip['id'], 'bad_data_notif', 0);
+                    if ($sent) {
+                        updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['no_counting_notif'=>0,'no_ticket_notif'=>0,'bad_data_notif'=>0]);
+                    }
                 }
             }
             if (!$customSelection && !$found && ($userTrip['no_counting_notif'] == 0)) {
-                sendMessage($userTrip['chat_id'], "برای تاریخ {$userTrip['date']} در مسیر {$route_title}، بلیطی مطابق ظرفیت و فیلترهای سفرت پیدا نشد.\nجست‌وجو ادامه دارد؛ اگر گزینهٔ مناسبی موجود شد خبرت می‌کنیم. 😊", trainTripManagementKeyboard((int) $userTrip['id']));
-                updateNotificationStatus($userTrip['id'], 'no_counting_notif', 1);
+                if (sendMessage($userTrip['chat_id'], "برای تاریخ {$userTrip['date']} در مسیر {$route_title}، بلیطی مطابق ظرفیت و فیلترهای سفرت پیدا نشد.\nجست‌وجو ادامه دارد؛ اگر گزینهٔ مناسبی موجود شد خبرت می‌کنیم. 😊", trainTripManagementKeyboard((int) $userTrip['id']),true,null)) {
+                    updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['no_counting_notif'=>1]);
+                }
             }
         } elseif (!$customSelection && $userTrip['no_ticket_notif'] == 0) {
-            sendMessage($userTrip['chat_id'], "*این مملکت درست نمی‌شه!*\n هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر " . translateRoute($userTrip['route']) . " وجود نداره.\nاگر چیزی ثبت شد (به شرط حیات) خبرت می‌‌کنیم 😎 \n البته ...\nمی‌خوای  خودت هم یه دور اطلاعات سفرت رو چک کن شاید مسیر یا تاریخ اشتباه وارد شده باشه و نیاز باشه سریع درستش کنیم😊", trainTripManagementKeyboard((int) $userTrip['id']));
-            updateNotificationStatus($userTrip['id'], 'no_ticket_notif', 1);
+            if (sendMessage($userTrip['chat_id'], "هیچ قطاری برای تاریخ {$userTrip['date']} در مسیر " . translateRoute($userTrip['route']) . " پیدا نشد. جست‌وجو ادامه دارد؛ مسیر و تاریخ سفرتان هم قابل بررسی است.", trainTripManagementKeyboard((int) $userTrip['id']),true,null)) {
+                updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['no_ticket_notif'=>1]);
+            }
         }
     } elseif ($customSelection) {
         // Upstream failures are logged once per shared request and do not re-arm alerts.
+        recordTicketPoll($notificationDb, $userTrip, false, 0, 0, 0, 0);
         return;
     } elseif (isset($data['data']['status']) && $data['data']['status'] === 'raja_backup' && $userTrip['bad_data_notif'] == 0) {
-        sendMessage($userTrip['chat_id'], "دوست خوبم آب از سمت رجا قطعه😂 \nبچه‌های رجا مشغول به‌روزرسانی سامانه‌ی ریلی هستن.👷‍♂️ \nدرست شد لیست بلیط‌ها به صورت خودکار برات میاد، غمت نباشه😙");
-        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
+        if (sendMessage($userTrip['chat_id'], "دوست خوبم آب از سمت رجا قطعه😂 \nبچه‌های رجا مشغول به‌روزرسانی سامانه‌ی ریلی هستن.👷‍♂️ \nدرست شد لیست بلیط‌ها به صورت خودکار برات میاد، غمت نباشه😙")) {
+            updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['bad_data_notif'=>1]);
+        }
     } elseif (isset($data['data']['status']) && $data['data']['status'] === 'failed' && $userTrip['bad_data_notif'] == 0) {
-        sendMessage($userTrip['chat_id'], "اوه اوه اوه! آب قند بیارین بچه‌های رجا از حال رفتن😂 \nبه دلیل اضافه شدن بلیط تاریخ‌های جدید، فعلا بلیط‌ها رو در اختیار هیچ سامانه‌ای قرار ندادن. \nدرست شد لیست بلیط‌ها که برای همه باز شد، به صورت خودکار برات میاد، حواسمون بهت هست😙");
-        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
+        if (sendMessage($userTrip['chat_id'], "اوه اوه اوه! آب قند بیارین بچه‌های رجا از حال رفتن😂 \nبه دلیل اضافه شدن بلیط تاریخ‌های جدید، فعلا بلیط‌ها رو در اختیار هیچ سامانه‌ای قرار ندادن. \nدرست شد لیست بلیط‌ها که برای همه باز شد، به صورت خودکار برات میاد، حواسمون بهت هست😙")) {
+            updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['bad_data_notif'=>1]);
+        }
     } elseif ($userTrip['bad_data_notif'] == 0) {
         // چاپ اطلاعات دریافتی از سرور
         $debug_info = "Debug Info:\n" .
@@ -505,15 +536,17 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null)
             "Trip Info: " . print_r($userTrip, true);
 
         // ارسال پیام خطا به کاربر
-        sendMessage($userTrip['chat_id'], "بابا جون من یه مقدار چشمام ضعیفه 👨🏻‍🦳، قطاری توی تاریخ {$userTrip['date']} پیدا نکردم. \nبذار برم عینکمو بیارم، هر وقت چیزی به چشمم خورد خبرت می‌کنم 🧐");
+        $sent = sendMessage($userTrip['chat_id'], "دریافت فهرست قطارها برای تاریخ {$userTrip['date']} فعلاً انجام نشد. در بررسی بعد دوباره تلاش می‌کنیم.");
 
         // ارسال اطلاعات خطا به لاگ یا ادمین (یا خود کاربر اگر مایل هستید)
         file_put_contents('debug.log', "Received info: " . $debug_info . "\n", FILE_APPEND);
 
-        updateNotificationStatus($userTrip['id'], 'bad_data_notif', 1);
+        if ($sent) { updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['bad_data_notif'=>1]); }
     }
+    recordTicketPoll($notificationDb, $userTrip, $departure !== null, $eligibleCount, $sentTicketCount, $failedCount, $suppressedCount);
     if ($sentTicketCount > 0 && tripFollowRevisionCurrent($notificationDb, $userTrip)) {
-        sendTrainResultsFooter($userTrip);
+        if ($deferFooter !== null) { $deferFooter($userTrip); }
+        else { sendTrainResultsFooter($userTrip); }
     }
     // else if ($userTrip['critical_notif'] == 0) {  // اضافه کردن یک فیلد جدید برای این وضعیت
     //     sendMessage($userTrip['chat_id'], "خیلی اوضاع خیطه 😬 \nبه ادمین یه ندا بده ❤");
@@ -521,13 +554,27 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null)
     // }
 }
 
+function updateTripNotificationFlags(SQLite3 $db, int $id, array $flags): void
+{
+    $set=[];$values=[':id'=>$id];
+    foreach ($flags as $field=>$value) {
+        if (!in_array($field, ['no_counting_notif','no_ticket_notif','bad_data_notif'], true)) { throw new InvalidArgumentException('Invalid notification flag'); }
+        $set[]=$field.'=:'.$field;$values[':'.$field]=(int)$value;
+    }
+    followSql($db, 'UPDATE user_trips SET '.implode(',',$set).' WHERE id=:id', $values);
+}
+
+function recordTicketPoll(SQLite3 $db, array $trip, bool $ok, int $eligible, int $sent, int $failed, int $suppressed): void
+{
+    if (!tripFollowRevisionCurrent($db, $trip)) { return; }
+    followSql($db, 'INSERT OR REPLACE INTO ticket_poll_status VALUES (:id,:now,:ok,:eligible,:sent,:failed,:suppressed)',
+        [':id'=>(int)$trip['id'],':now'=>time(),':ok'=>(int)$ok,':eligible'=>$eligible,':sent'=>$sent,':failed'=>$failed,':suppressed'=>$suppressed]);
+}
+
 // update notif state of each tripz
 function updateNotificationStatus($userTripId, $field, $data)
 {
-    $db = initDatabase();
-    $stmt = $db->prepare("UPDATE user_trips SET $field = $data WHERE id = :id");
-    $stmt->bindValue(':id', $userTripId, SQLITE3_INTEGER);
-    $stmt->execute();
+    updateTripNotificationFlags(initDatabase(), (int)$userTripId, [$field=>(int)$data]);
 }
 
 
@@ -547,7 +594,7 @@ function toEnglishNumbers($string)
 }
 
 
-function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $parseMode = 'Markdown')
+function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $parseMode = 'Markdown', array $context = [])
 {
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/sendMessage";
@@ -568,18 +615,18 @@ function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $p
         $postData['reply_markup'] = json_encode($replyMarkup);
     }
 
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-    $response = curl_exec($ch);
-    curl_close($ch);
-
-    $responseArray = json_decode($response, true);
-    return $responseArray['ok'] ?? false;
+    static $sender = null;
+    if ($sender === null) {
+        $sender = new TelegramMessageSender(initDatabase(), static function (array $payload) use ($url): array {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>10,CURLOPT_TIMEOUT=>30,CURLOPT_POSTFIELDS=>$payload]);
+            $response = curl_exec($ch);
+            $result = ['http'=>(int)curl_getinfo($ch,CURLINFO_HTTP_CODE),'errno'=>curl_errno($ch),'data'=>is_string($response)?json_decode($response,true):null];
+            curl_close($ch);
+            return $result;
+        });
+    }
+    return $sender->send($postData, $context);
 }
 
 
@@ -1116,7 +1163,7 @@ function handleCallbackQuery($callback_query)
     } elseif (strpos($data, 'wheelchair_') === 0) {
         $wheelchair = str_replace('wheelchair_', '', $data);
         handleSetTravelerWheelchair($chat_id, $wheelchair);
-    } elseif (strpos($data, 'reserve_list_') === 0) {
+    } elseif (strpos($data, 'reserve_list_') === 0 || strpos($data, 'reserve_token_') === 0) {
         // اضافه کردن لاگ
         // file_put_contents('debug.log', "Received callback: " . $data . "\n", FILE_APPEND);
         handleListReservation($data, $chat_id);
@@ -2139,7 +2186,7 @@ function getTravelersFromList($list_id, $chat_id)
 
 function getFoodOptions($ticketId, $passengerCount)
 {
-    $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0/{$passengerCount}-0-0/0";
+    $url = 'https://ghasedak24.com/train/reservation/'.rawurlencode((string)$ticketId)."/0/{$passengerCount}-0-0/0";
     // file_put_contents('debug.log', "Requesting URL: $url\n", FILE_APPEND);
 
     $ch = curl_init();
@@ -2190,7 +2237,7 @@ function getFoodOptions($ticketId, $passengerCount)
 
 function makeReservation($ticketId, $passengers, $user, $coupe)
 {
-    $url = "https://ghasedak24.com/train/reservation/{$ticketId}/0";
+    $url = 'https://ghasedak24.com/train/reservation/'.rawurlencode((string)$ticketId).'/0';
 
     // تبدیل اطلاعات مسافران به فرمت مورد نیاز
     $formattedPassengers = [];
@@ -2244,9 +2291,10 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
 
 function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 {
+    $callbackDb = null;
     $keyboard = [
         [
-            ['text' => 'تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/reservation/' . $ticket['id'] . '/0/' . min((int) $userTrip['count'], ticketAvailableSeats($ticket)) . '-0-0/' . $userTrip['coupe']]
+            ['text' => 'تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/reservation/' . rawurlencode((string)$ticket['id']) . '/0/' . min((int) $userTrip['count'], ticketAvailableSeats($ticket)) . '-0-0/' . $userTrip['coupe']]
         ]
     ];
     $keyboard[] = [['text'=>'مدیریت قطارهای هشدار', 'callback_data'=>'train_follow_' . $userTrip['id']]];
@@ -2260,10 +2308,16 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
             continue;
         }
         $member_count = toPersianNumbers($list['member_count']);
+        $legacyCallback = "reserve_list_{$list['id']}_{$ticket['id']}_{$userTrip['coupe']}";
+        $callback = $legacyCallback;
+        if (strlen($legacyCallback)>64 || strpos((string)$ticket['id'],'_')!==false) {
+            $callbackDb = $callbackDb ?? initDatabase();
+            $callback = ticketReservationCallback($callbackDb,(string)$userTrip['chat_id'],(int)$list['id'],(string)$ticket['id'],(int)$userTrip['coupe']);
+        }
         $keyboard[] = [
             [
                 'text' => "رزرو برای لیست {$list['name']} ({$member_count} نفر)",
-                'callback_data' => "reserve_list_{$list['id']}_{$ticket['id']}_{$userTrip['coupe']}"
+                'callback_data' => $callback
             ]
         ];
     }
@@ -2282,15 +2336,16 @@ function handleListReservation($callback_data, $chat_id)
     // file_put_contents('debug.log', "Starting handleListReservation with data: " . $callback_data . "\n", FILE_APPEND);
 
     // استخراج شناسه لیست و بلیط
+    $resolved = strpos($callback_data, 'reserve_token_')===0 ? resolveTicketReservation(initDatabase(),(string)$chat_id,$callback_data) : null;
     $parts = explode('_', $callback_data);
-    if (count($parts) !== 5) {
+    if ($resolved === null && (strpos($callback_data,'reserve_token_')===0 || count($parts) !== 5)) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
         return "⚠️ خطا: فرمت داده نامعتبر است";
     }
 
-    $list_id = $parts[2];
-    $ticket_id = $parts[3];
-    $coupe_data = $parts[4];
+    $list_id = $resolved['list_id'] ?? $parts[2];
+    $ticket_id = $resolved['ticket_id'] ?? $parts[3];
+    $coupe_data = $resolved['coupe'] ?? $parts[4];
 
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
@@ -2862,7 +2917,7 @@ function broadcastMessage($message, $chat_id)
 function translateRoute($route)
 {
     // خواندن داده از فایل JSON
-    $jsonFile = "train_cities_large.json";
+    $jsonFile = is_file(__DIR__.'/train_cities_large.json') ? __DIR__.'/train_cities_large.json' : __DIR__.'/train_cities.json';
     if (!file_exists($jsonFile)) {
         return "JSON file not found";
     }
@@ -2895,7 +2950,7 @@ function translateRoute($route)
 function findRoute($route)
 {
 
-    $jsonFile = "train_cities_large.json";
+    $jsonFile = is_file(__DIR__.'/train_cities_large.json') ? __DIR__.'/train_cities_large.json' : __DIR__.'/train_cities.json';
 
     // خواندن داده از فایل JSON
     if (!file_exists($jsonFile)) {
