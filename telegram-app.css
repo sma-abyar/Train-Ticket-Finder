@@ -38,3 +38,5 @@ dialog{color:var(--ink);background:var(--surface);border:0;border-radius:18px 18
 .alert-policy>summary::-webkit-details-marker{display:none}
 
 #notification-report{display:block;width:100%;min-height:220px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:12px/1.8 Tahoma,sans-serif;text-align:left;resize:vertical;overflow-wrap:anywhere}
+.page-back{display:inline-flex;align-items:center;gap:7px;color:var(--muted);margin:0 0 8px;min-height:44px;text-align:start}
+.page-back svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}

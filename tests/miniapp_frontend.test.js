@@ -5,14 +5,14 @@ class Element{
   constructor(value=''){this.value=value;this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.checked=false;this.events={};this.attributes={};this.textContent='';this.classList={toggle(){}};}
   append(...children){this.children.push(...children);}replaceChildren(...children){this.children=children;}
   setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}
-  addEventListener(k,v){this.events[k]=v;}focus(){this.focused=true;}scrollIntoView(){}showModal(){this.open=true;}close(){this.open=false;}
+  addEventListener(k,v){this.events[k]=v;}focus(){this.focused=true;}scrollIntoView(){}showModal(){this.open=true;}close(){this.open=false;this.events.close?.();}
   set innerHTML(_){throw new Error('Unsafe HTML rendering');}
 }
 function findTree(node,predicate){if(predicate(node))return node;for(const child of node.children){const result=findTree(child,predicate);if(result)return result;}return null;}
 function trainInput(ui,number){return findTree(ui.els['train-list'],e=>e.attributes.role==='switch'&&e.attributes['aria-label']?.includes(number));}
 async function toggle(ui,number,enabled){const input=trainInput(ui,number);assert.ok(input);input.checked=enabled;return input.onchange();}
 const flush=()=>new Promise(r=>setImmediate(r));
-async function fixture(auth=true){
+async function fixture(auth=true,options={}){
   const html=fs.readFileSync(require.resolve('../telegram-app.html'),'utf8'), els={};
   for(const [,id] of html.matchAll(/id="([^"]+)"/g))els[id]=new Element();
   const quotas=['0','1','2'].map(v=>new Element(v));quotas[0].checked=true;
@@ -50,15 +50,18 @@ async function fixture(auth=true){
     else if(b.action==='delete_trip')data={deleted:true,trip_id:b.trip_id};
     else if(b.action==='diagnostics')data={report_version:1,issues:['worker_never_ran'],cron:null};
     else data=catalog;return {ok:true,status:200,json:async()=>({ok:true,data:structuredClone(data)})};};
-  const window={TrainCalendar:C,Telegram:{WebApp:{initData:auth?'signed':'',ready(){},expand(){},enableClosingConfirmation(){},disableClosingConfirmation(){}}},matchMedia:()=>({matches:false}),scrollTo(){},confirm:()=>true,addEventListener(){}};
-  vm.runInNewContext(fs.readFileSync(require.resolve('../telegram-app.js'),'utf8'),{window,document,location:{href:'https://example.test/telegram-app.php',search:''},fetch,URL,URLSearchParams,crypto,sessionStorage:storage,localStorage:storage,AbortController,setTimeout,clearTimeout,Uint8Array,Intl,Date:FakeDate,console});
-  await flush();return {els,calls,quotas,modes,nav,advance:ms=>{fakeNow+=ms;docEvents.visibilitychange();},serverSelection:keys=>{Object.assign(catalog,{mode:'selected',selected:keys,revision:catalog.revision+1});},offline:()=>{offline=2;},ambiguous:()=>{ambiguous=true;},fail:(status=409)=>{fail={status,message:'Concurrent edit'};},failInitial:()=>{initialFailure=true;},holdInitial:()=>{waitInitial=new Promise(resolve=>{releaseInitial=resolve;});return ()=>releaseInitial();},holdSwitch:()=>{waitSwitch=new Promise(resolve=>{releaseSwitch=resolve;});return ()=>releaseSwitch();},hold:()=>{waitCreate=new Promise(resolve=>{releaseCreate=resolve;});return ()=>releaseCreate();}};
+  let confirmAnswer=true;const confirmations=[];
+  const backButton={isVisible:false,handler:null,registrations:0,show(){this.isVisible=true;},hide(){this.isVisible=false;},onClick(handler){this.handler=handler;this.registrations++;}};
+  const window={TrainCalendar:C,Telegram:{WebApp:{initData:auth?'signed':'',BackButton:options.noNativeBack?undefined:backButton,ready(){},expand(){},enableClosingConfirmation(){},disableClosingConfirmation(){}}},matchMedia:()=>({matches:false}),scrollTo(){},confirm:message=>{confirmations.push(message);return confirmAnswer;},addEventListener(){}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../telegram-app.js'),'utf8'),{window,document,location:{href:'https://example.test/telegram-app.php',search:options.search||''},fetch,URL,URLSearchParams,crypto,sessionStorage:storage,localStorage:storage,AbortController,setTimeout,clearTimeout,Uint8Array,Intl,Date:FakeDate,console});
+  await flush();return {els,calls,quotas,modes,nav,backButton,back:()=>backButton.handler(),confirm:answer=>{confirmAnswer=answer;},confirmations,advance:ms=>{fakeNow+=ms;docEvents.visibilitychange();},serverSelection:keys=>{Object.assign(catalog,{mode:'selected',selected:keys,revision:catalog.revision+1});},offline:()=>{offline=2;},ambiguous:()=>{ambiguous=true;},fail:(status=409)=>{fail={status,message:'Concurrent edit'};},failInitial:()=>{initialFailure=true;},holdInitial:()=>{waitInitial=new Promise(resolve=>{releaseInitial=resolve;});return ()=>releaseInitial();},holdSwitch:()=>{waitSwitch=new Promise(resolve=>{releaseSwitch=resolve;});return ()=>releaseSwitch();},hold:()=>{waitCreate=new Promise(resolve=>{releaseCreate=resolve;});return ()=>releaseCreate();}};
 }
 const submit=ui=>ui.els['trip-form'].events.submit({preventDefault(){}});
 function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].children.find(e=>e.textContent===name).onclick();}
 (async()=>{
   const noAuth=await fixture(false);assert.equal(noAuth.calls.length,0);assert.match(noAuth.els.notice.textContent,/تلگرام/);
   const ui=await fixture();assert.equal(ui.calls.length,1);assert.equal(ui.els['previous-month'].disabled,true);
+  assert.equal(ui.els.back.hidden,false);assert.match(ui.els['page-back-label'].textContent,/سفرها/);assert.equal(ui.backButton.isVisible,true);assert.equal(ui.backButton.registrations,1);
   await submit(ui);assert.match(ui.els['form-error'].textContent,/مبدأ/);
   choose(ui,'origin','تهران');choose(ui,'destination','مشهد');ui.els['quick-dates'].children[1].onclick();
   await submit(ui);assert.equal(ui.els['step-2'].hidden,false);ui.els.plus.onclick();ui.els.partial.checked=true;
@@ -68,7 +71,8 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   ui.fail();await submit(ui);const failed=ui.calls.at(-1);assert.equal(failed.action,'create_trip');assert.equal(ui.els['step-3'].hidden,false);
   await submit(ui);const retry=ui.calls.filter(c=>c.action==='create_trip').at(-1);assert.equal(retry.request_id,failed.request_id);assert.deepEqual(retry.trip,failed.trip);assert.equal(ui.els['success-view'].hidden,false);
   await flush();assert.equal(ui.calls.at(-1).action,'initial_check');assert.match(ui.els['success-check'].textContent,/به ربات ارسال شد/);assert.equal(ui.els['success-check-time'].hidden,false);
-  await ui.els['success-alerts'].onclick();assert.equal(ui.els['alerts-view'].hidden,false);
+  await ui.els['success-alerts'].onclick();assert.equal(ui.els['alerts-view'].hidden,false);assert.match(ui.els['alerts-back'].textContent,/نتیجه/);
+  ui.els['alerts-back'].onclick();assert.equal(ui.els['success-view'].hidden,false,'Alert settings opened from registration must return to its result');await ui.els['success-alerts'].onclick();
   const secondCard=ui.els['train-list'].children[1].children[1];assert.ok(secondCard.children.some(e=>e.textContent==='با فیلتر ساعت مطابق نیست'));assert.ok(secondCard.children.some(e=>e.textContent.includes('محدودیت تلگرام')));
   assert.equal(ui.els['save-alerts'].hidden,true,'There is no separate save step for a switch');
   await ui.modes.find(i=>i.value==='selected').onchange();
@@ -97,6 +101,7 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   assert.equal(trainInput(ui,'189').checked,false,'An interrupted response is reconciled with the server');assert.equal(ui.els['save-alerts'].hidden,true);
   ui.offline();await toggle(ui,'189',true);
   assert.equal(trainInput(ui,'189').checked,false,'Offline UI shows the last confirmed state');assert.match(ui.els['alert-count'].textContent,/تأییدشده/);
+  ui.confirm(false);ui.back();assert.equal(ui.els['alerts-view'].hidden,false,'Native back cannot discard an unconfirmed alert change without consent');assert.equal(ui.els['save-alerts'].hidden,false);ui.confirm(true);
   await ui.els['save-alerts'].onclick();assert.equal(trainInput(ui,'189').checked,true,'Idempotent retry completes an uncertain change');
   const concurrent=await fixture();await concurrent.els['trip-list'].children[0].children[2].onclick();concurrent.serverSelection(['b']);concurrent.fail();await concurrent.modes.find(i=>i.value==='selected').onchange();
   assert.equal(trainInput(concurrent,'188').checked,false);assert.equal(trainInput(concurrent,'189').checked,true);assert.equal(concurrent.els['save-alerts'].hidden,false,'A conflicting choice set cannot be reported as saved merely because the mode matches');
@@ -107,11 +112,12 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   filtered.els['filter-all'].onclick();assert.equal(trainInput(filtered,'188').checked,false,'A hidden disabled service can be found and enabled again');
   const diagnostics=await fixture();await diagnostics.els['trip-list'].children[0].children[2].onclick();await diagnostics.els['notification-diagnostics'].onclick();
   assert.equal(diagnostics.calls.at(-1).action,'diagnostics');assert.equal(diagnostics.els['notification-report'].hidden,false);assert.match(diagnostics.els['notification-report'].value,/هنوز اجرای کرون ثبت نشده/);assert.equal(diagnostics.els['notification-diagnostics'].disabled,false);
+  assert.equal(diagnostics.els['close-diagnostics'].hidden,false);diagnostics.back();assert.equal(diagnostics.els['notification-report'].hidden,true);assert.equal(diagnostics.els['alerts-view'].hidden,false,'Native back closes the report before leaving train settings');diagnostics.back();assert.equal(diagnostics.els['trips-view'].hidden,false);assert.equal(diagnostics.backButton.isVisible,false);
   const rapid=await fixture();await rapid.els['trip-list'].children[0].children[2].onclick();const releaseSwitch=rapid.holdSwitch();const toggling=toggle(rapid,'188',false);await flush();await toggle(rapid,'189',false);
   assert.equal(rapid.els.main.inert,false,'The content and live status stay accessible during switch persistence');assert.equal(trainInput(rapid,'189').disabled,true);
   assert.equal(rapid.calls.filter(c=>c.action==='set_train').length,1);assert.equal(trainInput(rapid,'189').checked,true,'Busy switches cannot visually claim a second unsaved change');releaseSwitch();await toggling;assert.equal(trainInput(rapid,'188').checked,false);assert.equal(trainInput(rapid,'189').checked,true);
   const double=await fixture();choose(double,'origin','تهران');choose(double,'destination','مشهد');double.els['quick-dates'].children[1].onclick();await submit(double);await submit(double);
-  const releaseInitial=double.holdInitial(),release=double.hold(),pending=submit(double);await flush();await submit(double);assert.equal(double.calls.filter(c=>c.action==='create_trip').length,1);assert.equal(double.els.main.inert,true);release();await pending;assert.equal(double.els.main.inert,false);
+  const releaseInitial=double.holdInitial(),release=double.hold(),pending=submit(double);await flush();await submit(double);assert.equal(double.calls.filter(c=>c.action==='create_trip').length,1);assert.equal(double.els.main.inert,true);double.back();assert.equal(double.els['step-3'].hidden,false,'Back during an active save must not abandon the request');release();await pending;assert.equal(double.els.main.inert,false);
   assert.equal(double.els['success-view'].hidden,false);assert.match(double.els['success-check'].textContent,/در حال بررسی/,'A slow initial search cannot block confirmation of the saved trip');
   double.els['success-trips'].onclick();releaseInitial();await flush();assert.equal(double.els['trips-view'].hidden,false,'A late first-check response cannot change the current screen');
   const lostInitial=await fixture();choose(lostInitial,'origin','تهران');choose(lostInitial,'destination','مشهد');lostInitial.els['quick-dates'].children[1].onclick();await submit(lostInitial);await submit(lostInitial);lostInitial.failInitial();await submit(lostInitial);await flush();
@@ -124,5 +130,20 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   removeButton().onclick();removal.fail();await removal.els['confirm-delete'].onclick();assert.ok(removal.els['trip-list'].children[0].children.length>0,'Failed removal keeps the trip');assert.equal(removal.els['delete-dialog'].open,false);
   removeButton().onclick();const deleting=removal.els['confirm-delete'].onclick();await removal.els['confirm-delete'].onclick();await deleting;
   assert.equal(removal.calls.filter(c=>c.action==='delete_trip').length,2,'One failed attempt and one confirmed success; double clicks do not resend');assert.match(removal.els['trip-list'].children[0].textContent,/هنوز سفری/);
+  const navigation=await fixture();navigation.els.origin.onclick();navigation.back();assert.equal(navigation.els['city-dialog'].open,false);assert.equal(navigation.els.origin.focused,true);assert.equal(navigation.els['create-view'].hidden,false,'Back closes the city sheet without leaving the form');
+  navigation.els.origin.onclick();navigation.els['city-back'].onclick();assert.equal(navigation.els['city-dialog'].open,false);
+  choose(navigation,'origin','تهران');choose(navigation,'destination','مشهد');navigation.els['quick-dates'].children[1].onclick();const chosenDate=navigation.els['selected-date'].textContent;
+  navigation.els['open-calendar'].onclick();navigation.els['calendar-back'].onclick();assert.equal(navigation.els['date-dialog'].open,false);assert.equal(navigation.els['selected-date'].textContent,chosenDate);
+  navigation.els['open-calendar'].onclick();navigation.back();assert.equal(navigation.els['date-dialog'].open,false);assert.equal(navigation.els['open-calendar'].focused,true);
+  await submit(navigation);navigation.els.plus.onclick();navigation.els.partial.checked=true;navigation.els['time-from'].value='09:00';navigation.els['max-price'].value='۵۰۰';navigation.els['step-2'].events.input();
+  navigation.back();assert.equal(navigation.els['step-1'].hidden,false,'Native back moves one registration step');navigation.els['page-back'].onclick();assert.equal(navigation.els['trips-view'].hidden,false);assert.equal(navigation.backButton.isVisible,false);
+  navigation.els['new-trip'].onclick();await submit(navigation);assert.equal(navigation.els.count.textContent,'۲');assert.equal(navigation.els.partial.checked,true);assert.equal(navigation.els['time-from'].value,'09:00');assert.equal(navigation.els['time-to'].value,'');assert.equal(navigation.els['max-price'].value,'۵۰۰','Even an unfinished filter survives returning to the menu and reopening the draft');
+  navigation.els['time-to'].value='18:00';await submit(navigation);assert.equal(navigation.els['step-3'].hidden,false);navigation.els['page-back'].onclick();assert.equal(navigation.els['step-2'].hidden,false);navigation.els.back.onclick();navigation.els.back.onclick();
+  navigation.els['trip-list'].children[0].children[3].children[0].onclick();assert.equal(navigation.els.back.hidden,false);assert.match(navigation.els.back.textContent,/سفرها/);navigation.els['step-2'].events.input();navigation.confirm(false);navigation.back();assert.equal(navigation.els['create-view'].hidden,false,'Unsaved preference edits cannot disappear on back without confirmation');navigation.confirm(true);navigation.back();assert.equal(navigation.els['trips-view'].hidden,false);assert.equal(navigation.calls.filter(c=>c.action==='update_preferences').length,0);
+  navigation.els['new-trip'].onclick();await submit(navigation);assert.equal(navigation.els.count.textContent,'۲','Editing an existing trip cannot overwrite the separate new-trip draft');navigation.els.back.onclick();navigation.els.back.onclick();
+  navigation.els['trip-list'].children[0].children[3].children[1].onclick();assert.equal(navigation.backButton.isVisible,true);navigation.back();assert.equal(navigation.els['delete-dialog'].open,false);assert.equal(navigation.backButton.isVisible,false);assert.equal(navigation.calls.filter(c=>c.action==='delete_trip').length,0);
+  const deepLink=await fixture(true,{search:'?trip_id=1&view=alerts'});assert.equal(deepLink.els['alerts-view'].hidden,false);deepLink.back();assert.equal(deepLink.els['trips-view'].hidden,false,'Direct links return to the local trip list');
+  const fallback=await fixture(true,{noNativeBack:true});fallback.els['page-back'].onclick();assert.equal(fallback.els['trips-view'].hidden,false,'Visible navigation works without the Telegram BackButton API');
+  console.log('PASS Back navigation: form steps, preserved partial drafts, preference cancellation, alert origins, direct links, reports, sheets, delete cancellation and native/fallback controls');
   console.log('PASS Unified UI: trip entry and deletion, immediate switches, sold-out services, idempotent retry, interrupted responses, offline recovery and concurrent settings');
 })().catch(e=>{console.error(e);process.exitCode=1;});
