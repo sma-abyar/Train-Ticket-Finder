@@ -38,7 +38,7 @@ try {
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'send_queue.php', 'cron_probe.php', 'cron_runtime.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
-        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','broadcast_queue.php','diagnose_notifications.php'] as $file) {
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp-motion.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','broadcast_queue.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
     mkdir($temp.'/fonts');mkdir($temp.'/fonts/webfonts');
@@ -133,7 +133,7 @@ PHP);
     rename($temp.'/.env',$temp.'/.env.asset-test');
     try {
         verify($publicGet('/telegram-app.css?v=2')[0]===403,'Reproduce static-file denial');
-        foreach(['style'=>['telegram-app.css','text/css'],'app'=>['telegram-app.js','text/javascript'],'calendar'=>['miniapp-calendar.js','text/javascript'],'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2']] as $name=>[$source,$mime]){
+        foreach(['style'=>['telegram-app.css','text/css'],'app'=>['telegram-app.js','text/javascript'],'calendar'=>['miniapp-calendar.js','text/javascript'],'motion'=>['miniapp-motion.js','text/javascript'],'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2']] as $name=>[$source,$mime]){
             [$status,$body,$headers]=$publicGet('/telegram-app.php?asset='.$name.'&v=3');
             verify($status===200 && str_starts_with($headers['content-type']??'',$mime),'UI asset must have the correct MIME type: '.$name);
             verify(hash('sha256',$body)===hash_file('sha256',$temp.'/'.$source),'Asset bytes must match the source: '.$name);

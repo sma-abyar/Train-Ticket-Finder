@@ -62,6 +62,7 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   const noAuth=await fixture(false);assert.equal(noAuth.calls.length,0);assert.match(noAuth.els.notice.textContent,/تلگرام/);
   const ui=await fixture();assert.equal(ui.calls.length,1);assert.equal(ui.els['previous-month'].disabled,true);
   assert.equal(ui.els.back.hidden,false);assert.match(ui.els['page-back-label'].textContent,/سفرها/);assert.equal(ui.backButton.isVisible,true);assert.equal(ui.backButton.registrations,1);
+  ui.nav.find(b=>b.dataset.nav==='alerts').onclick();assert.equal(ui.nav.find(b=>b.dataset.nav==='alerts').attributes['aria-current'],'page','Choosing the alerts section must keep its navigation item active while choosing a trip');assert.equal(ui.calls.length,1);ui.nav.find(b=>b.dataset.nav==='create').onclick();
   await submit(ui);assert.match(ui.els['form-error'].textContent,/مبدأ/);
   choose(ui,'origin','تهران');choose(ui,'destination','مشهد');ui.els['quick-dates'].children[1].onclick();
   await submit(ui);assert.equal(ui.els['step-2'].hidden,false);ui.els.plus.onclick();ui.els.partial.checked=true;
