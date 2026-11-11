@@ -14,7 +14,7 @@
     :({all:'همه روشن',except:'چند قطار خاموش',selected:'قطارهای انتخابی',none:'هشدار خاموش'}[trip.mode]||'همه روشن');
   let theme=tg?.colorScheme||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   try{theme=localStorage.getItem('hamsafar-theme')||theme;}catch(_){}if(!['light','dark'].includes(theme))theme='light';
-  function applyTheme(){document.documentElement.dataset.theme=theme;tg?.setHeaderColor?.(theme==='dark'?'#1b222d':'#f2f4f7');tg?.setBackgroundColor?.(theme==='dark'?'#1b222d':'#f2f4f7');}
+  function applyTheme(){document.documentElement.dataset.theme=theme;tg?.setHeaderColor?.(theme==='dark'?'#202329':'#ffffff');tg?.setBackgroundColor?.(theme==='dark'?'#202329':'#ffffff');}
   applyTheme();$('theme-toggle').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();try{localStorage.setItem('hamsafar-theme',theme);}catch(_){}};
   function notice(text,error=false){$('notice').textContent=text;$('notice').className='notice'+(error?' error':'');$('notice').hidden=!text;}
   function formError(text){$('form-error').textContent=text;$('form-error').hidden=!text;if(text)$('form-error').scrollIntoView({block:'center'});}
