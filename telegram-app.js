@@ -10,6 +10,8 @@
   let alertsReturn='trips', draftFields={};
   let hasShownView=false;
   const motion=window.TrainMotion;
+  const modalIds=['delete-dialog','time-dialog','date-dialog','city-dialog'];
+  let clockSide='from',clockDraft={from:'00:00',to:'24:00'},clockOpener='open-time-from',savingLabel=null;
   const draftFieldIds=['time-from','time-to','min-price','max-price','companies'];
   let draft={origin:'',destination:'',date:'',count:1,type:0,coupe:false,allow_partial_capacity:false,search_filters:{}}, requestId='', lockedPayload=null;
   let catalog=null, mode='all', selected=new Set(), excluded=new Set(), alertDirty=false, preferencesDirty=false, pendingAlertOperation=null, alertSaveStatus='saved', alertSyncUnknown=false;
@@ -23,7 +25,12 @@
   applyTheme();$('theme-toggle').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();try{localStorage.setItem('hamsafar-theme',theme);}catch(_){}};
   function notice(text,error=false){$('notice').textContent=text;$('notice').className='notice'+(error?' error':'');$('notice').hidden=!text;}
   function formError(text){$('form-error').textContent=text;$('form-error').hidden=!text;if(text)$('form-error').scrollIntoView({block:'center'});}
-  function setBusy(value,scope='main'){busy=value;$('main').inert=value&&scope==='main';$('main').setAttribute('aria-busy',String(value));document.querySelectorAll('#continue,#save-alerts,#refresh-trains').forEach(b=>b.disabled=value);document.querySelectorAll('.train-control input,[name=alert-mode]').forEach(input=>input.disabled=value);document.querySelectorAll('[data-nav]').forEach(b=>b.disabled=value);}
+  function setBusy(value,scope='main'){
+    busy=value;$('main').inert=value&&scope==='main';$('main').setAttribute('aria-busy',String(value));
+    if(value&&scope==='main'&&view==='create'){if(savingLabel===null)savingLabel=$('continue').textContent;$('continue').textContent='در حال ذخیره…';$('continue').setAttribute('aria-busy','true');}
+    if(!value&&savingLabel!==null){$('continue').textContent=savingLabel;savingLabel=null;$('continue').setAttribute('aria-busy','false');}
+    document.querySelectorAll('#continue,#save-alerts,#refresh-trains').forEach(b=>b.disabled=value);document.querySelectorAll('.train-control input,[name=alert-mode]').forEach(input=>input.disabled=value);document.querySelectorAll('[data-nav]').forEach(b=>b.disabled=value);
+  }
   async function api(action,extra={}){
     if(!tg?.initData)throw new Error('برای ورود امن، مینی‌اپ را از دکمهٔ داخل ربات باز کن.');
     const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),40000);
@@ -53,19 +60,19 @@
     Object.assign(draft,{count,type:Number(document.querySelector('[name=quota]:checked').value),coupe:$('coupe').checked,allow_partial_capacity:$('partial').checked});
     try{draft.search_filters=readFilters();}catch(_){}persist();
   }
-  function fillDraftFields(){fillFields(draft);for(const [id,value] of Object.entries(draftFields))$(id).value=value;}
+  function fillDraftFields(){fillFields(draft);for(const [id,value] of Object.entries(draftFields))$(id).value=value;renderTimeFields();}
   function syncBack(){
     const label=view==='create'&&!editTrip&&step>1?'مرحلهٔ قبل':'بازگشت به سفرها';
     $('page-navigation').hidden=!boot||!['create','success'].includes(view);
     $('page-back-label').textContent=label;$('back').textContent=label;$('back').hidden=false;
     $('alerts-back').textContent=alertsReturn==='success'?'بازگشت به نتیجهٔ ثبت':'بازگشت به سفرها';
-    const hasDialog=['city-dialog','date-dialog','delete-dialog'].some(id=>$(id).open);
+    const hasDialog=modalIds.some(id=>$(id).open);
     if(boot&&(view!=='trips'||hasDialog))tg?.BackButton?.show?.();else tg?.BackButton?.hide?.();
   }
   function closeDialog(id){
     if(busy)return;
     $(id).close();if(id==='delete-dialog')deletingTrip=null;
-    $(id==='city-dialog'?cityTarget:id==='date-dialog'?'open-calendar':'trips-title')?.focus();syncBack();
+    $(id==='city-dialog'?cityTarget:id==='date-dialog'?'open-calendar':id==='time-dialog'?clockOpener:'trips-title')?.focus();syncBack();
   }
   function closeDiagnostics(){
     $('notification-report').hidden=true;$('diagnostics-hint').hidden=true;$('close-diagnostics').hidden=true;
@@ -73,7 +80,7 @@
   }
   function goBack(){
     if(!boot||busy)return;
-    const dialog=['delete-dialog','date-dialog','city-dialog'].find(id=>$(id).open);
+    const dialog=modalIds.find(id=>$(id).open);
     if(dialog){closeDialog(dialog);return;}
     if(view==='alerts'&&!$('notification-report').hidden){closeDiagnostics();return;}
     if(view==='create'&&!editTrip&&step>1){if(step===2)rememberDraftFields();setStep(step-1);return;}
@@ -139,13 +146,54 @@
     document.querySelectorAll('[name=quota]').forEach(i=>{i.checked=Number(i.value)===trip.type;i.disabled=!!editTrip;});$('coupe').disabled=!!editTrip;
     const f=trip.search_filters||{};document.querySelectorAll('[name=train-type]').forEach(i=>i.checked=(f.train_types||[]).includes(i.value));
     $('time-from').value=f.departure_from||'';$('time-to').value=f.departure_to||'';$('min-price').value=f.min_price===undefined?'':fa(f.min_price);$('max-price').value=f.max_price===undefined?'':fa(f.max_price);$('companies').value=(f.companies||[]).join('، ');
+    renderTimeFields();
     $('advanced').open=Object.keys(f).length>0;
   }
   function readFilters(){const f={},types=[...document.querySelectorAll('[name=train-type]:checked')].map(i=>i.value);if(types.length)f.train_types=types;
-    const from=$('time-from').value,to=$('time-to').value;if(from||to){if(!from||!to)throw new Error('ابتدا و انتهای بازهٔ ساعت را مشخص کن.');f.departure_from=from;f.departure_to=to;}
+    const from=en($('time-from').value),to=en($('time-to').value);if(from||to){if(!from||!to)throw new Error('ابتدا و انتهای بازهٔ ساعت را مشخص کن.');if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(from)||!/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(to))throw new Error('بازهٔ ساعت معتبر انتخاب کن.');f.departure_from=from;f.departure_to=to;}
     for(const [id,key] of [['min-price','min_price'],['max-price','max_price']]){const text=en($(id).value).trim();if(text){if(!/^\d{1,12}$/.test(text))throw new Error('قیمت را به تومان و فقط با عدد وارد کن.');f[key]=Number(text);}}
     if(f.min_price!==undefined&&f.max_price!==undefined&&f.min_price>f.max_price)throw new Error('حداقل قیمت نباید از حداکثر بیشتر باشد.');
     const companies=$('companies').value.split(/[،,\n]/).map(s=>s.trim()).filter(Boolean);if(companies.length>12)throw new Error('حداکثر ۱۲ شرکت انتخاب کن.');if(companies.length)f.companies=companies;return f;
+  }
+  function renderTimeFields(){
+    for(const side of ['from','to']){const value=$('time-'+side).value,button=$('open-time-'+side);button.dataset.empty=String(!value);$('time-'+side+'-display').textContent=value?fa(value):'بدون محدودیت';}
+  }
+  function clockSummary(){
+    $('time-draft-from').textContent=fa(clockDraft.from);$('time-draft-to').textContent=fa(clockDraft.to);
+    const minutes=value=>Number(value.slice(0,2))*60+Number(value.slice(3)),from=minutes(clockDraft.from),to=minutes(clockDraft.to);
+    $('time-range-note').textContent=from===to||to-from===1440?'همهٔ ساعت‌های روز؛ بازهٔ ۲۴ساعته':from>to?'بازهٔ شبانه؛ دو سوی نیمه‌شب در تاریخ همین سفر.':'حرکت از '+fa(clockDraft.from)+' تا قبل از '+fa(clockDraft.to);
+    ['00','15','30','45'].forEach(value=>$('minute-'+value).setAttribute('aria-pressed',String(clockDraft[clockSide].slice(3)===value)));
+  }
+  function paintClock(){
+    const [hour,minute]=clockDraft[clockSide].split(':');$('clock-hour').value=fa(hour);$('clock-minute').value=fa(minute);
+    $('time-side-from').setAttribute('aria-pressed',String(clockSide==='from'));$('time-side-to').setAttribute('aria-pressed',String(clockSide==='to'));
+    $('time-editing-label').textContent=clockSide==='from'?'تنظیم ساعت شروع':'تنظیم ساعت پایان';$('clock-error').hidden=true;clockSummary();motion?.sync();
+  }
+  function readClock(showError=true){
+    const hour=en($('clock-hour').value).trim(),minute=en($('clock-minute').value).trim(),max=clockSide==='to'?24:23;
+    const badHour=!/^\d{1,2}$/.test(hour)||Number(hour)>max,badMinute=!/^\d{1,2}$/.test(minute)||Number(minute)>59||(Number(hour)===24&&Number(minute)!==0);
+    if(badHour||badMinute){if(showError){$('clock-error').textContent=badHour?'ساعت را بین ۰ و '+fa(max)+' وارد کن.':Number(hour)===24?'ساعت ۲۴ فقط با دقیقهٔ ۰۰، برای پایان روز است.':'دقیقه را بین ۰ و ۵۹ وارد کن.';$('clock-error').hidden=false;$(badHour?'clock-hour':'clock-minute').focus();}return false;}
+    clockDraft[clockSide]=hour.padStart(2,'0')+':'+minute.padStart(2,'0');$('clock-error').hidden=true;clockSummary();return true;
+  }
+  function openClock(side){
+    if(busy)return;clockSide=side;clockOpener='open-time-'+side;
+    const from=en($('time-from').value),to=en($('time-to').value);
+    clockDraft={from:/^([01]\d|2[0-3]):[0-5]\d$/.test(from)?from:'00:00',to:/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(to)?to:'24:00'};
+    paintClock();$('time-dialog').showModal();syncBack();motion?.sync();$('time-side-'+side).focus();
+  }
+  function switchClock(side){if(readClock()){clockSide=side;paintClock();}}
+  function adjustClock(unit,amount){
+    if(!readClock())return;let [hour,minute]=clockDraft[clockSide].split(':').map(Number);
+    if(unit==='hour'){const size=clockSide==='to'?25:24;hour=(hour+amount+size)%size;if(hour===24)minute=0;}
+    else{const total=(hour*60+minute+amount+1440)%1440;hour=Math.floor(total/60);minute=total%60;}
+    clockDraft[clockSide]=String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');paintClock();motion?.pulse($('clock-'+unit));
+  }
+  function applyClock(clear=false){
+    if(!clear&&!readClock())return;
+    const unrestricted=clear||clockDraft.from===clockDraft.to||(clockDraft.from==='00:00'&&clockDraft.to==='24:00');
+    const from=unrestricted?'':clockDraft.from,to=unrestricted?'':clockDraft.to,changed=$('time-from').value!==from||$('time-to').value!==to;
+    $('time-from').value=from;$('time-to').value=to;renderTimeFields();
+    if(changed){if(editTrip){preferencesDirty=true;markClose();}else rememberDraftFields();}closeDialog('time-dialog');
   }
   function readPreferences(){return {count,type:Number(document.querySelector('[name=quota]:checked').value),coupe:$('coupe').checked,allow_partial_capacity:$('partial').checked,search_filters:readFilters()};}
   function renderReview(){const filters=draft.search_filters,rows=[['تاریخ حرکت',dateText(draft.date)],['صندلی مورد نیاز',fa(draft.count)+' نفر'],['سهمیه',['عادی','ویژه برادران','ویژه خواهران'][draft.type]],['کوپهٔ دربست',draft.coupe?'بله':'خیر'],['ظرفیت کمتر',draft.allow_partial_capacity?'اطلاع داده شود':'فقط ظرفیت کافی'],['هشدار قطارها','همهٔ قطارها']];
@@ -167,7 +215,7 @@
     finally{$('delete-dialog').close();deletingTrip=null;setBusy(false);syncBack();$('confirm-delete').disabled=false;$('cancel-delete').disabled=false;$('trips-title').focus();}
   }
   $('confirm-delete').onclick=deleteTrip;$('cancel-delete').onclick=()=>closeDialog('delete-dialog');$('delete-dialog').addEventListener('cancel',event=>{if(busy)event.preventDefault();else deletingTrip=null;});
-  ['city-dialog','date-dialog','delete-dialog'].forEach(id=>$(id).addEventListener('close',syncBack));
+  modalIds.forEach(id=>$(id).addEventListener('close',syncBack));
   async function submit(event){event.preventDefault();if(busy)return;syncToday();formError('');try{
     if(!editTrip&&step>1&&(!draft.date||draft.date<today)){setStep(1);throw new Error('روز حرکت را دوباره انتخاب کن؛ تاریخ قبلی گذشته است.');}
     if(step===1){if(!draft.origin){$('origin').focus();throw new Error('ابتدا شهر مبدأ را انتخاب کن.');}if(!draft.destination||draft.origin===draft.destination){$('destination').focus();throw new Error('یک مقصد متفاوت انتخاب کن.');}if(!draft.date||draft.date<today){$('open-calendar').focus();throw new Error('روز حرکت را از امروز به بعد انتخاب کن.');}setStep(2);return;}
@@ -185,21 +233,24 @@
   async function startInitialCheck(tripId){
     const run=++initialCheckRun, current=()=>run===initialCheckRun&&createdTrip?.id===tripId;
     $('success-check').textContent='سفر ذخیره شد؛ در حال بررسی بلیط‌های همین مسیر و روز…';
+    $('success-check').dataset.state='loading';
     $('success-check-time').hidden=true;$('success-retry').hidden=true;
     try{
       for(let attempt=0;attempt<12;attempt++){
         const result=await api('initial_check',{trip_id:tripId});
         if(!current())return;
         $('success-check').textContent=result.message;
+        $('success-check').dataset.state=result.state==='checking'?'loading':result.state;
         if(result.checked_at){$('success-check-time').textContent='آخرین بررسی موجودی: '+new Date(Number(result.checked_at)*1000).toLocaleString('fa-IR');$('success-check-time').hidden=false;}
         if(result.state!=='checking')return;
         if(view!=='success')return;
-        if(attempt===11){$('success-check').textContent='سفر ذخیره شده و بررسی ادامه دارد؛ نتیجهٔ تازه به ربات ارسال می‌شود.';$('success-retry').hidden=false;return;}
+        if(attempt===11){$('success-check').dataset.state='pending';$('success-check').textContent='سفر ذخیره شده و بررسی ادامه دارد؛ نتیجهٔ تازه به ربات ارسال می‌شود.';$('success-retry').hidden=false;return;}
         await new Promise(resolve=>setTimeout(resolve,3000));
       }
     }catch(error){
       if(!current())return;
       $('success-check').textContent='سفر ذخیره شده است؛ نتیجهٔ بررسی اولیه دریافت نشد. پایش خودکار ادامه دارد.';
+      $('success-check').dataset.state='unavailable';
       $('success-retry').hidden=error.status===401||error.status===404;
     }
   }
@@ -375,10 +426,10 @@
     if (!showView('alerts')) return;
     alertsReturn=returnView;syncBack();
     $('notification-report').hidden=true;$('diagnostics-hint').hidden=true;$('close-diagnostics').hidden=true;$('notification-report').value='';
-    $('alert-controls').hidden = true; $('alert-trip').textContent = 'در حال دریافت قطارها…'; setBusy(true);
+    $('alert-controls').hidden = true;const trip=boot.trips.find(t=>t.id===id);$('alert-trip').textContent=trip?routeText(trip)+' · '+dateText(trip.date):'سفر انتخاب‌شده';$('trains-loading').hidden=false;setBusy(true,'loading');
     try { setCatalog(await api('load',{trip_id:id})); }
     catch (error) { notice(error.message + ' سفر را دوباره از فهرست باز کن.',true); }
-    finally { setBusy(false); }
+    finally { $('trains-loading').hidden=true;setBusy(false); }
   }
   function saveAlerts() { if (pendingAlertOperation) return persistAlertChange(pendingAlertOperation); }
   async function showNotificationDiagnostics() {
@@ -402,15 +453,21 @@
   }
   async function refreshCatalog() {
     if (busy || !catalog || (alertDirty && !mayLeave())) return;
-    setBusy(true);
+    setBusy(true,'alerts');$('refresh-status').hidden=false;
     try { pendingAlertOperation = null; alertSaveStatus = 'saved'; alertSyncUnknown = false; setCatalog(await api('refresh',{trip_id:catalog.trip_id})); notice('فهرست به‌روز شد.'); }
     catch (error) { notice(error.message,true); }
-    finally { setBusy(false); }
+    finally { $('refresh-status').hidden=true;setBusy(false); }
   }
   $('trip-form').addEventListener('submit',submit);$('back').onclick=goBack;$('page-back').onclick=goBack;$('edit-route').onclick=()=>{if(!busy)setStep(1);};
   tg?.BackButton?.onClick?.(goBack);
   $('origin').onclick=()=>openCity('origin');$('destination').onclick=()=>openCity('destination');$('swap').onclick=()=>{[draft.origin,draft.destination]=[draft.destination,draft.origin];persist();renderStations();motion?.turn($('swap'));};$('city-search').oninput=renderCities;$('close-city').onclick=()=>closeDialog('city-dialog');$('city-back').onclick=()=>closeDialog('city-dialog');$('city-dialog').addEventListener('click',e=>{if(e.target===$('city-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog('city-dialog');}});
   $('open-calendar').onclick=()=>{syncToday();$('date-dialog').showModal();syncBack();};$('close-calendar').onclick=()=>closeDialog('date-dialog');$('calendar-back').onclick=()=>closeDialog('date-dialog');
+  $('open-time-from').onclick=()=>openClock('from');$('open-time-to').onclick=()=>openClock('to');
+  $('close-time').onclick=()=>closeDialog('time-dialog');$('cancel-time').onclick=()=>closeDialog('time-dialog');$('apply-time').onclick=()=>applyClock();$('clear-time').onclick=()=>applyClock(true);
+  $('time-side-from').onclick=()=>switchClock('from');$('time-side-to').onclick=()=>switchClock('to');
+  $('hour-plus').onclick=()=>adjustClock('hour',1);$('hour-minus').onclick=()=>adjustClock('hour',-1);$('minute-plus').onclick=()=>adjustClock('minute',5);$('minute-minus').onclick=()=>adjustClock('minute',-5);
+  ['00','15','30','45'].forEach(value=>$('minute-'+value).onclick=()=>{if(!readClock())return;const hour=clockDraft[clockSide].slice(0,2);clockDraft[clockSide]=(hour==='24'&&value!=='00'?'00':hour)+':'+value;paintClock();});
+  ['clock-hour','clock-minute'].forEach(id=>{$(id).addEventListener('input',()=>readClock(false));$(id).addEventListener('keydown',event=>{if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault();adjustClock(id==='clock-hour'?'hour':'minute',(event.key==='ArrowUp'?1:-1)*(id==='clock-hour'?1:5));}else if(event.key==='Enter'){event.preventDefault();applyClock();}});});
   $('previous-month').onclick=()=>changeMonth(-1);$('next-month').onclick=()=>changeMonth(1);$('minus').onclick=()=>{if(count>1){count--;renderCount();motion?.pulse($('count'));if(!editTrip){draft.count=count;persist();}}};$('plus').onclick=()=>{if(count<12){count++;renderCount();motion?.pulse($('count'));if(!editTrip){draft.count=count;persist();}}};
   $('step-2').addEventListener('input',()=>{if(editTrip){preferencesDirty=true;markClose();return;}rememberDraftFields();});
   $('new-trip').onclick=freshCreate;$('success-trips').onclick=()=>showView('trips');$('success-alerts').onclick=()=>openAlerts(createdTrip.id);$('alerts-back').onclick=()=>showView(alertsReturn);$('close-diagnostics').onclick=closeDiagnostics;$('save-alerts').onclick=saveAlerts;$('refresh-trains').onclick=refreshCatalog;$('train-search').oninput=()=>catalog&&renderTrains();
@@ -423,9 +480,9 @@
   window.addEventListener('beforeunload',e=>{if(alertDirty||preferencesDirty){e.preventDefault();e.returnValue='';}});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&boot)syncToday();});
   $('retry-start').onclick=init;
-  async function init(){tg?.ready();tg?.expand();$('retry-start').hidden=true;$('loading').hidden=false;notice('');try{
+  async function init(){tg?.ready();tg?.expand();$('retry-start').hidden=true;$('loading').hidden=false;$('main').hidden=true;$('bottom-navigation').hidden=true;notice('');try{
     if(!tg?.initData)throw new Error('این صفحه را از دکمهٔ «ثبت سفر» یا «سفرهای من» داخل ربات تلگرام باز کن تا ورودت تأیید شود.');
-    boot=await api('bootstrap');bootAt=Date.now();todayDate=new Date(boot.today+'T12:00:00Z');today=C.key(C.parts(todayDate));restore();[year,month]=(draft.date||today).split('-').map(Number);renderStations();renderQuick();renderCalendar();fillDraftFields();renderTrips();setStep(1);$('main').hidden=false;$('loading').hidden=true;
+    boot=await api('bootstrap');bootAt=Date.now();todayDate=new Date(boot.today+'T12:00:00Z');today=C.key(C.parts(todayDate));restore();[year,month]=(draft.date||today).split('-').map(Number);renderStations();renderQuick();renderCalendar();fillDraftFields();renderTrips();setStep(1);$('main').hidden=false;$('bottom-navigation').hidden=false;$('loading').hidden=true;
     const params=new URLSearchParams(location.search),id=Number(params.get('trip_id'));if(id>0&&Number.isSafeInteger(id))await openAlerts(id);else if(params.get('view')==='trips'||params.get('view')==='alerts')showView('trips',params.get('view'));else showView('create');
   }catch(error){$('loading').hidden=true;$('retry-start').hidden=!tg?.initData;notice(error.message,true);}}
   init();

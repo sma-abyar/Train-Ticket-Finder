@@ -18,6 +18,7 @@
       ['quota-choices', 'input:checked', true], ['quick-dates', '.chosen'],
       ['train-filters', '[aria-pressed="true"]'], ['bottom-navigation', '[aria-current="page"]'],
       ['trip-steps', '[aria-current="step"]'],
+      ['time-endpoints', '[aria-pressed="true"]'],
     ];
     const groups = specs.map(([id, selector, label]) => {
       const group = doc.getElementById(id);
