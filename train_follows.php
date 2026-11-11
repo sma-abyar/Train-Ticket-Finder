@@ -91,10 +91,16 @@ function trainFollowKey(array $ticket): string
 
 function ticketIsFollowed(array $ticket, array $trip): bool
 {
+    if (tripFollowMode($trip) === 'all') { return true; }
+    return tripFollowsTrainKey(trainFollowKey($ticket), $trip);
+}
+
+function tripFollowsTrainKey(string $key, array $trip): bool
+{
     $mode = tripFollowMode($trip);
     return $mode === 'all' || ($mode === 'except'
-        && !in_array(trainFollowKey($ticket), array_column(tripExcludedTrains($trip), 'key'), true)) || ($mode === 'selected'
-        && in_array(trainFollowKey($ticket), array_column(tripFollowedTrains($trip), 'key'), true));
+        && !in_array($key, array_column(tripExcludedTrains($trip), 'key'), true)) || ($mode === 'selected'
+        && in_array($key, array_column(tripFollowedTrains($trip), 'key'), true));
 }
 
 function trainFollowSnapshot(array $ticket): array
@@ -236,11 +242,11 @@ function saveTrainFollows(SQLite3 $db, int $tripId, string $chatId, string $mode
         ]);
         // Keep delivery history for unchanged choices, but re-arm newly followed
         // trains and a resumed trip. Delete history in the same transaction.
-        $keep = $mode === 'selected' && tripFollowMode($trip) === 'selected' ? array_column($selected, 'key') : [];
+        $newTrip = array_replace($trip, ['follow_mode'=>$mode, 'followed_trains'=>$selected, 'excluded_trains'=>$excluded]);
         $history = followSql($db, 'SELECT train_key FROM train_follow_delivery WHERE trip_id=:id', [':id'=>$tripId]);
         $remove = [];
         while ($row = $history->fetchArray(SQLITE3_ASSOC)) {
-            if (!in_array($row['train_key'], $keep, true)) {
+            if (!tripFollowsTrainKey($row['train_key'], $trip) || !tripFollowsTrainKey($row['train_key'], $newTrip)) {
                 $remove[] = $row['train_key'];
             }
         }
@@ -311,7 +317,7 @@ function tripFollowRevisionCurrent(SQLite3 $db, array $trip): bool
     return $row && (int) $row['follow_revision'] === (int) ($trip['follow_revision'] ?? 0);
 }
 
-/** Selected trains notify on opening / reaching sufficient capacity, not every poll. */
+/** All enabled modes notify on opening / sufficient-capacity transitions, not steady polls. */
 final class TrainFollowAlerts
 {
     private SQLite3 $db;
@@ -326,6 +332,7 @@ final class TrainFollowAlerts
         $stages = [];
         foreach ($tickets as $ticket) {
             $key = trainFollowKey($ticket);
+            if (!tripFollowsTrainKey($key, $trip)) { continue; }
             $stage = ticketMatchesCapacity($ticket, $trip) && ticketMatchesLocalFilters($ticket, $trip)
                 ? (ticketAvailableSeats($ticket) >= (int) $trip['count'] ? 2 : 1) : 0;
             $stages[$key] = max($stages[$key] ?? 0, $stage);
@@ -335,14 +342,19 @@ final class TrainFollowAlerts
         }
         try {
             $current = followSql($this->db, 'SELECT follow_revision, follow_mode FROM user_trips WHERE id=:id', [':id'=>(int) $trip['id']])->fetchArray(SQLITE3_ASSOC);
-            if ($current && $current['follow_mode'] === 'selected' && (int) $current['follow_revision'] === (int) $trip['follow_revision']) {
-                foreach (tripFollowedTrains($trip) as $choice) {
-                    $key = $choice['key'];
-                    $old = followSql($this->db, 'SELECT stage, pending FROM train_follow_delivery WHERE trip_id=:id AND train_key=:key',
-                        [':id'=>(int) $trip['id'], ':key'=>$key])->fetchArray(SQLITE3_ASSOC);
+            if ($current && in_array($current['follow_mode'], ['all','except','selected'], true) && (int) $current['follow_revision'] === (int) $trip['follow_revision']) {
+                $history = [];
+                $rows = followSql($this->db, 'SELECT train_key,stage,pending FROM train_follow_delivery WHERE trip_id=:id', [':id'=>(int)$trip['id']]);
+                while ($row = $rows->fetchArray(SQLITE3_ASSOC)) { $history[$row['train_key']] = $row; }
+                $rows->finalize();
+                $keys = array_unique(array_merge(array_keys($stages), array_keys($history), array_column(tripFollowedTrains($trip), 'key')));
+                foreach ($keys as $key) {
+                    $old = $history[$key] ?? null;
                     $before = (int) ($old['stage'] ?? 0);
                     $stage = $stages[$key] ?? 0;
                     $pending = $stage === 0 ? 0 : ($stage > $before ? 1 : (int)($old['pending'] ?? 0));
+                    // A steady poll needs no write and must preserve any active lease.
+                    if ($old && $before === $stage && (int)$old['pending'] === $pending) { continue; }
                     followSql($this->db, 'INSERT INTO train_follow_delivery (trip_id, train_key, stage, pending) VALUES (:id,:key,:stage,:pending)
                         ON CONFLICT(trip_id,train_key) DO UPDATE SET stage=excluded.stage, pending=excluded.pending,
                         claim_token=CASE WHEN stage=excluded.stage THEN claim_token ELSE NULL END,
@@ -364,7 +376,7 @@ final class TrainFollowAlerts
         $token = bin2hex(random_bytes(16));
         followSql($this->db, 'UPDATE train_follow_delivery SET claim_token=:token, claimed_at=:now
             WHERE trip_id=:id AND train_key=:key AND pending=1 AND stage>0 AND (claimed_at IS NULL OR claimed_at<:retry)
-            AND EXISTS (SELECT 1 FROM user_trips WHERE id=:id AND follow_mode=\'selected\' AND follow_revision=:revision)', [
+            AND EXISTS (SELECT 1 FROM user_trips WHERE id=:id AND follow_mode IN(\'all\',\'except\',\'selected\') AND follow_revision=:revision)', [
             ':token'=>$token, ':now'=>time(), ':retry'=>time()-300, ':id'=>(int) $trip['id'], ':key'=>$key, ':revision'=>(int) $trip['follow_revision'],
         ]);
         return $this->db->changes() === 1 ? $token : null;

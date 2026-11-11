@@ -225,7 +225,7 @@
     if (next.last_poll && Number(next.last_poll.inventory_ok) === 0) diagnostics.push('دریافت از فروشنده ناموفق بود؛ موجودی نمایش‌داده‌شده از حافظه است.');
     const lastSent = Math.max(0,...next.options.map(item => Number(item.last_sent_at) || 0));
     if (lastSent) diagnostics.push('آخرین پذیرش پیام توسط تلگرام: ' + new Date(lastSent * 1000).toLocaleString('fa-IR'));
-    if (next.mode === 'selected') diagnostics.push('تا وقتی وضعیت قطارهای انتخابی ثابت بماند، هشدار تکرار نمی‌شود.');
+    diagnostics.push('هشدار با موجودشدن قطار یا رسیدن به ظرفیت کافی ارسال می‌شود؛ وضعیت ثابت در هیچ حالت هشدار تکرار نمی‌شود.');
     diagnostics.push('به‌روزرسانی فهرست فقط موجودی را دریافت می‌کند؛ ارسال پیام در بررسی خودکار انجام می‌شود.');
     $('catalog-time').textContent = diagnostics.join('\n');
     $('alert-controls').hidden = false;

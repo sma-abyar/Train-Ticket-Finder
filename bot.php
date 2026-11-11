@@ -463,18 +463,15 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
     if(!ticketTripSendAllowed($notificationDb,$userTrip)){return;}
     $batch = $batch ?? new TicketSearchBatch('requestTicketSearch');
     $data = $batch->get($userTrip);
-    $selectedOnly = tripFollowMode($userTrip) === 'selected';
     $customSelection = in_array(tripFollowMode($userTrip), ['selected', 'except'], true);
     $sentTicketCount = 0;
-    $followAlerts = $selectedOnly ? new TrainFollowAlerts($notificationDb) : null;
+    $followAlerts = new TrainFollowAlerts($notificationDb);
     $eligibleCount = $failedCount = $suppressedCount = 0;
     $travelerLists = null;
     $route_title = '';
     $departure = trainSearchTickets($data);
     if ($departure !== null) {
-        if ($followAlerts !== null) {
-            $followAlerts->observe($userTrip, $departure);
-        }
+        $followAlerts->observe($userTrip, $departure);
         if (!empty($departure)) {
             $attempts=[];$rows=followSql($notificationDb,"SELECT train_key,last_attempt_at FROM telegram_ticket_delivery WHERE trip_id=:id AND kind='ticket'",[':id'=>(int)$userTrip['id']]);
             while($row=$rows->fetchArray(SQLITE3_ASSOC)){$attempts[$row['train_key']]=(int)$row['last_attempt_at'];}
@@ -495,8 +492,8 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
                     if (!ticketTripSendAllowed($notificationDb, $userTrip)) {
                         continue;
                     }
-                    $claim = $followAlerts !== null ? $followAlerts->claim($userTrip, trainFollowKey($ticket)) : null;
-                    if ($followAlerts !== null && $claim === null) {
+                    $claim = $followAlerts->claim($userTrip, trainFollowKey($ticket));
+                    if ($claim === null) {
                         $suppressedCount++;
                         continue;
                     }
@@ -530,9 +527,7 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
                     } else {
                         $failedCount++;
                     }
-                    if ($followAlerts !== null) {
-                        $followAlerts->complete((int) $userTrip['id'], trainFollowKey($ticket), $claim, $sent);
-                    }
+                    $followAlerts->complete((int) $userTrip['id'], trainFollowKey($ticket), $claim, $sent);
 
                     if ($sent) {
                         updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['no_counting_notif'=>0,'no_ticket_notif'=>0,'bad_data_notif'=>0]);
@@ -576,7 +571,9 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
         if ($sent) { updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['bad_data_notif'=>1]); }
     }
     recordTicketPoll($notificationDb, $userTrip, $departure !== null, $eligibleCount, $sentTicketCount, $failedCount, $suppressedCount);
-    if ($sentTicketCount > 0 && ticketTripSendAllowed($notificationDb, $userTrip)) {
+    if ($eligibleCount > 0
+        && !followSql($notificationDb, 'SELECT 1 FROM ticket_trip_hints WHERE trip_id=:id AND sent_at IS NOT NULL', [':id'=>(int)$userTrip['id']])->fetchArray(SQLITE3_NUM)
+        && ticketTripSendAllowed($notificationDb, $userTrip)) {
         if ($deferFooter !== null) { $deferFooter($userTrip); }
         else { sendTrainResultsFooter($userTrip); }
     }

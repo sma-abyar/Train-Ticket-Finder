@@ -89,7 +89,8 @@ if ($path === '/search') {
         }
         if (is_file(__DIR__.'/telegram-error.json')) {
             $error=json_decode(file_get_contents(__DIR__.'/telegram-error.json'),true);
-            if (!isset($error['chat_id']) || (string)$error['chat_id']===(string)$payload['chat_id']) {
+            if ((!isset($error['chat_id']) || (string)$error['chat_id']===(string)$payload['chat_id'])
+                && (empty($error['only_hint']) || str_starts_with($payload['text'],'تنظیم هشدار سفر'))) {
                 http_response_code($error['error_code']);echo json_encode($error+['ok'=>false]);return;
             }
         }
@@ -192,6 +193,7 @@ PHP);
     verify(in_array('reserve_list_22_ticket-1_0', array_column(array_merge(...$secondKeyboard['inline_keyboard']), 'callback_data'), true), 'Second user reservation list was mixed up');
     verify(str_contains($tickets[2]['payload']['reply_markup'], '2-0-0'), 'Passenger count must be preserved in reservation links');
     foreach ($tickets as $ticketMessage) {
+        verify(empty($ticketMessage['payload']['disable_notification']),'New ticket alerts must keep normal audible Telegram delivery');
         $buttons = array_merge(...json_decode($ticketMessage['payload']['reply_markup'],true)['inline_keyboard']);
         $muteButtons = array_values(array_filter($buttons,static fn($button)=>str_starts_with($button['callback_data'] ?? '', 'train_mute_')));
         verify(count($muteButtons)===1 && strlen($muteButtons[0]['callback_data'])<=64,'Every ticket must carry a scoped mute button within Telegram callback limits');
@@ -204,7 +206,7 @@ PHP);
     runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
     $requests = $readRequests();
     verify(count(array_filter($requests, static fn($request) => $request['path'] === '/search')) === 2, 'Next cycle must fetch fresh ticket data');
-    verify(count(array_filter($requests, static fn($request) => $request['path'] === '/botTEST/sendMessage')) === 14, 'Only tickets and one footer per active trip should repeat; expiration notifications must not');
+    verify(count(array_filter($requests, static fn($request) => $request['path'] === '/botTEST/sendMessage')) === 8, 'Unchanged availability, trip hints and expiration notices must all remain quiet');
 
     // Sharing a response must not share the subscribers' suppression flags.
     $db = new SQLite3($temp . '/users.db');
@@ -412,7 +414,7 @@ PHP);
     $before = count($readRequests());
     runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
     $opened = $newMessages($before);
-    verify(count($opened) === 2 && str_contains($opened[0]['payload']['text'], '۱۸۸'), 'Opening a selected service should send its ticket and one trip footer');
+    verify(count($opened) === 1 && str_contains($opened[0]['payload']['text'], '۱۸۸'), 'Opening a selected service should send its ticket without repeating the old trip hint');
     $before = count($readRequests());
     runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
     verify(count($newMessages($before)) === 0, 'Steady availability must not repeat alerts');
@@ -436,7 +438,7 @@ PHP);
     file_put_contents($temp . '/override-search.json', json_encode($response));
     $before = count($readRequests());
     runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
-    verify(count($newMessages($before)) === 2, 'A later reopening must send the ticket and one trip footer again');
+    verify(count($newMessages($before)) === 1, 'A later reopening must notify again without repeating the trip hint');
     [$status, $paused] = $api(['action'=>'save','init_data'=>$auth,'trip_id'=>1,'mode'=>'selected','keys'=>[],'revision'=>1]);
     verify($status === 200 && $paused['data']['mode'] === 'none', 'Clearing all choices must pause this trip');
     $before = count($readRequests());
@@ -447,7 +449,7 @@ PHP);
     $before = count($readRequests());
     runPhp(array_merge($php, [$temp . '/check_tickets.php']), $temp);
     $opened = $newMessages($before);
-    verify(count($opened) === 2 && str_contains($opened[0]['payload']['text'], '۱۸۹'), 'Only the newly followed train should notify, followed by its trip footer');
+    verify(count($opened) === 1 && str_contains($opened[0]['payload']['text'], '۱۸۹'), 'Only the newly followed train should notify');
 
     [$status] = $api(['action'=>'save','init_data'=>$auth,'trip_id'=>1,'mode'=>'all','keys'=>[],'revision'=>3]);
     verify($status===200,'All-trains mode should be selectable');
@@ -455,8 +457,8 @@ PHP);
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $batch=$newMessages($before);
     $ticketMessages=array_values(array_filter($batch,static fn($message)=>str_contains($message['payload']['text'],'بلیط موجود است')));
-    verify(count($ticketMessages)===2 && count($batch)===3,'A batch should have one footer after all ticket messages');
-    verify(str_contains($batch[2]['payload']['reply_markup'],'train_follow_1'),'Footer must open the selector for the same trip');
+    verify(count($ticketMessages)===1 && count($batch)===1 && str_contains($ticketMessages[0]['payload']['text'],'۱۸۸'),'Switching to all keeps existing alerts quiet and only enables the newly followed train');
+    verify(str_contains($batch[0]['payload']['reply_markup'],'train_follow_1'),'Ticket buttons still open the selector for the same trip');
     $firstButtons=array_merge(...json_decode($ticketMessages[0]['payload']['reply_markup'],true)['inline_keyboard']);
     $mute=array_values(array_filter($firstButtons,static fn($button)=>str_starts_with($button['callback_data'] ?? '', 'train_mute_')))[0]['callback_data'];
     file_put_contents($temp.'/message-controls.php', <<<'PHP'
@@ -481,15 +483,15 @@ PHP);
     $before=count($readRequests());
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $remaining=array_values(array_filter($newMessages($before),static fn($message)=>str_contains($message['payload']['text'],'بلیط موجود است')));
-    verify(count($remaining)===2 && str_contains(implode('\n',array_column(array_column($remaining,'payload'),'text')),'۱۸۹') && str_contains(implode('\n',array_column(array_column($remaining,'payload'),'text')),'۱۹۰'),
-        'Muting A must leave B and the newly discovered C enabled');
+    verify(count($remaining)===1 && str_contains($remaining[0]['payload']['text'],'۱۹۰'),
+        'Muting A must keep B quiet in the same state and notify the newly discovered C');
     verify(str_contains($remaining[0]['payload']['text'],'۱۹۰'),'A newly discovered unattempted service gets a turn before already-attempted services');
     runPhp(array_merge($php,[$temp.'/message-controls.php','101',$restore]),$temp);
     verify($api(['init_data'=>$auth,'trip_id'=>1])[1]['data']['mode']==='all','Restore action should re-enable the muted train');
     $before=count($readRequests());
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $restored=array_values(array_filter($newMessages($before),static fn($message)=>str_contains($message['payload']['text'],'بلیط موجود است')));
-    verify(count($restored)===3,'Restoring A should include all three trains again');
+    verify(count($restored)===1 && str_contains($restored[0]['payload']['text'],'۱۸۸'),'Restoring A must not re-arm unchanged B and C');
     $app = static fn(array $body) => $api($body, 'telegram-app.php');
     [$status,$bootstrap] = $app(['init_data'=>$auth,'action'=>'bootstrap']);
     verify($status===200 && count($bootstrap['data']['cities'])===36 && count($bootstrap['data']['trips'])===1,'Unified app loads owned trips and local stations');
@@ -592,7 +594,7 @@ PHP);
     file_put_contents($temp.'/override-search.json',json_encode($inventory,JSON_UNESCAPED_UNICODE));
     $before=count($readRequests());
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
-    verify(count($newMessages($before))===2,'An undelivered alert retries at still-allowed partial capacity, then sends one footer');
+    verify(count($newMessages($before))===1,'An undelivered alert retries at still-allowed partial capacity without repeating the trip hint');
     [$status,$diagnosticPicker]=$app(['init_data'=>$auth,'action'=>'load','trip_id'=>1]);
     verify($status===200 && $diagnosticPicker['data']['options'][0]['eligible']===true,'Mini App explains eligibility for the exact user trip');
     verify($diagnosticPicker['data']['options'][0]['last_sent_at']!==null && $diagnosticPicker['data']['options'][0]['send_error_code']===0,'Mini App distinguishes successful Telegram acceptance');
@@ -667,6 +669,9 @@ PHP);
     $db->exec('CREATE TABLE IF NOT EXISTS traveler_list_members(list_id INTEGER,traveler_id INTEGER)');
     $db->exec('INSERT INTO traveler_list_members VALUES(11,1),(11,6),(22,6)');
     $db->exec('ALTER TABLE traveler_lists DROP COLUMN members');$db->close();
+    $picker=$app(['init_data'=>$auth,'action'=>'load','trip_id'=>1])[1]['data'];
+    $switch['train_key']=array_values(array_filter($picker['options'],static fn($option)=>$option['eligible']))[0]['key'];
+    $switch['enabled']=false;$app($switch);$switch['enabled']=true;$app($switch);
     $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $sent=array_values(array_filter($newMessages($before),static fn($r)=>str_contains($r['payload']['text'],'بلیط موجود است')&&(string)$r['payload']['chat_id']==='101'));
     verify(count($sent)===1 && str_contains($sent[0]['payload']['reply_markup'],'reserve_'),'Legacy list schema cannot block alerts and retains owned reservation buttons');
@@ -718,12 +723,13 @@ PHP);
             fclose($pipes[0]);$output=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
             return [proc_close($process),$output,$errors];
         };
+        $switch['enabled']=false;$app($switch);$switch['enabled']=true;$app($switch);
         $before=count($readRequests());
         [$exit,$output,$errors]=$runCgi('check_tickets.php');
         verify($exit===0 && $errors==='' && !str_contains($output,'403') && !str_contains($output,'Fatal'),'Actual local CGI worker must reach ticket processing');
         $cgiHealth=json_decode(substr(file_get_contents($temp.'/ticket-worker-health.php'),strlen("<?php http_response_code(404); exit; ?>\n")),true);
         verify($cgiHealth['sapi']==='cgi-fcgi' && $cgiHealth['stage']==='finished' && $cgiHealth['error']===null,'Actual CGI execution must record a successful worker checkpoint');
-        verify(count($newMessages($before))>=2,'CGI worker must send eligible ticket and reservation-button messages');
+        verify(count($newMessages($before))>=1,'CGI worker must send an eligible re-enabled ticket with reservation buttons');
         file_put_contents($temp.'/seed-queue.php', <<<'PHP'
 <?php
 define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
@@ -791,14 +797,46 @@ if($db->querySingle('SELECT error FROM ticket_trip_runs WHERE trip_id='.(int)$ba
 if($db->querySingle('SELECT error FROM ticket_trip_runs WHERE trip_id=1')!==null)throw new RuntimeException('Healthy trip did not continue');
 $db->exec("UPDATE users SET approved=0 WHERE chat_id='101'");
 PHP);
+    $switch['enabled']=false;$app($switch);$switch['enabled']=true;$app($switch);
     $before=count($readRequests());runPhp(array_merge($php,[$temp.'/trip-isolation.php']),$temp,'Ticket trip failed');
-    verify(count($newMessages($before))>=2,'An unexpected per-trip error cannot swallow a later user trip ticket or footer');
+    verify(count($newMessages($before))>=1,'An unexpected per-trip error cannot swallow a later user trip ticket');
     file_put_contents($temp.'/revoked-trip.php', <<<'PHP'
 <?php
 define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';processUserTrips('101');
 PHP);
     $before=count($readRequests());runPhp(array_merge($php,[$temp.'/revoked-trip.php']),$temp);
     verify(count($readRequests())===$before,'A revoked account cannot trigger manual ticket searches or delivery');
+    // A failed help footer must retry independently of already delivered tickets.
+    file_put_contents($temp.'/hint-scenario.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$db=initDatabase();$db->exec("UPDATE user_trips SET follow_mode='none',follow_revision=follow_revision+1");
+$db->exec("INSERT INTO users(chat_id,approved)VALUES('808',1)");
+$future=(new DateTimeImmutable('tomorrow',new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
+$id=saveUserTrip('808',['route'=>'tehran-mashhad','date'=>$future,'return_date'=>$future,'count'=>1,'type'=>0,'coupe'=>0,'filter'=>0]);
+file_put_contents(__DIR__.'/hint-trip-id',(string)$id);
+PHP);
+    runPhp(array_merge($php,[$temp.'/hint-scenario.php']),$temp);
+    $hintTripId=(int)file_get_contents($temp.'/hint-trip-id');
+    file_put_contents($temp.'/telegram-error.json',json_encode(['chat_id'=>'808','error_code'=>500,'description'=>'Temporary failure','only_hint'=>true]));
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp,'Telegram delivery:');
+    $sent=$newMessages($before);
+    verify(count($sent)===2 && str_contains($sent[0]['payload']['text'],'بلیط موجود است') && str_starts_with($sent[1]['payload']['text'],'تنظیم هشدار سفر'),'Ticket acceptance and failed help delivery are independent');
+    $db=new SQLite3($temp.'/users.db');
+    verify($db->querySingle('SELECT sent_at FROM ticket_trip_hints WHERE trip_id='.$hintTripId)===null,'Failed hint is not marked delivered');
+    $db->exec("UPDATE ticket_trip_hints SET claim_token='other-worker',claimed_at=".time().' WHERE trip_id='.$hintTripId);$db->close();
+    unlink($temp.'/telegram-error.json');
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===0,'An active footer claim prevents duplicate delivery while steady tickets remain quiet');
+    $db=new SQLite3($temp.'/users.db');$db->exec('UPDATE ticket_trip_hints SET claimed_at=1 WHERE trip_id='.$hintTripId);$db->close();
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    $sent=$newMessages($before);
+    verify(count($sent)===1 && str_starts_with($sent[0]['payload']['text'],'تنظیم هشدار سفر') && empty($sent[0]['payload']['disable_notification']),'An abandoned hint retries with a normal notification without repeating accepted tickets');
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===0,'Successful help is sent once per trip, even after a worker restart');
+    $db=new SQLite3($temp.'/users.db');$db->exec('DELETE FROM user_trips WHERE id='.$hintTripId);
+    verify((int)$db->querySingle('SELECT COUNT(*) FROM ticket_trip_hints WHERE trip_id='.$hintTripId)===0,'Deleting a trip also deletes its help delivery state');$db->close();
+    echo "PASS Quiet alerts: normal notifications, one help per trip, independent failure retry and active/abandoned help leases\n";
     echo "PASS Broadcast delivery: all approved recipients, atomic idempotent enqueue, plain raw text, revoked/blocked states, admin progress and no resends\n";
     echo "PASS Trip isolation: a failed trip cannot stop healthy ones and revoked accounts cannot send\n";
     echo "PASS Script-only cron probe: local runtime, signed report, no bot calls and protected result\n";

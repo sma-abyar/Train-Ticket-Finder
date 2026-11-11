@@ -247,6 +247,37 @@ $tests['trip deletion also removes its followed-alert delivery records'] = stati
     expect($db->querySingle('SELECT COUNT(*) FROM train_follow_delivery'), 0);
 };
 
+$tests['all and except modes notify only on opening or sufficient-capacity transitions']=static function(){
+    foreach(['all','except']as$mode){
+        [$db,$trip]=followFixture(['count'=>4,'allow_partial_capacity'=>1]);
+        $a=followTicket(['counting_en'=>4]);$b=followTicket(['train_number_en'=>189,'time'=>'15:00','counting_en'=>5]);
+        storeTrainCatalog($db,TicketSearchBatch::payload($trip),[$a,$b]);$key=trainFollowKey($a);
+        if($mode==='except'){$trip=saveTrainFollows($db,(int)$trip['id'],'101','except',[],0,[trainFollowKey($b)]);}
+        $alerts=new TrainFollowAlerts($db);$alerts->observe($trip,[$a,$b]);$claim=$alerts->claim($trip,$key);expect(is_string($claim),true);
+        $alerts->complete((int)$trip['id'],$key,$claim,true);
+        $writes=(int)$db->querySingle('SELECT total_changes()');
+        $alerts->observe($trip,[array_replace($a,['counting_en'=>6,'cost'=>3600000]),$b]);
+        expect((int)$db->querySingle('SELECT total_changes()'),$writes,'A steady inventory poll should not rewrite delivery state');
+        expect($alerts->claim($trip,$key),null);
+        $alerts->observe($trip,[array_replace($a,['counting_en'=>2]),$b]);expect($alerts->claim($trip,$key),null);
+        $alerts->observe($trip,[$a,$b]);$claim=$alerts->claim($trip,$key);expect(is_string($claim),true);
+        $alerts->complete((int)$trip['id'],$key,$claim,true);
+        $alerts->observe($trip,[]);$alerts->observe($trip,[$a]);expect(is_string($alerts->claim($trip,$key)),true,'A real reopening still deserves a new alert');
+    }
+};
+
+$tests['mute and mode edits do not re-arm other unchanged enabled trains']=static function(){
+    [$db,$trip]=followFixture();$a=followTicket(['counting_en'=>4]);$b=followTicket(['train_number_en'=>189,'time'=>'15:00','counting_en'=>4]);
+    storeTrainCatalog($db,TicketSearchBatch::payload($trip),[$a,$b]);$ka=trainFollowKey($a);$kb=trainFollowKey($b);$alerts=new TrainFollowAlerts($db);
+    $alerts->observe($trip,[$a,$b]);foreach([$ka,$kb]as$key){$claim=$alerts->claim($trip,$key);$alerts->complete((int)$trip['id'],$key,$claim,true);}
+    $trip=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($ka,0,24),false);
+    $alerts->observe($trip,[$a,$b]);expect($alerts->claim($trip,$kb),null);
+    $trip=setTrainMessagePreference($db,(int)$trip['id'],'101',substr($ka,0,24),true);
+    $alerts->observe($trip,[$a,$b]);expect(is_string($alerts->claim($trip,$ka)),true);expect($alerts->claim($trip,$kb),null);
+    $trip=saveTrainFollows($db,(int)$trip['id'],'101','selected',[$kb],(int)$trip['follow_revision']);
+    $alerts->observe($trip,[$a,$b]);expect($alerts->claim($trip,$kb),null);
+};
+
 $tests['independent train switches merge changes and idempotent retries preserve revision'] = static function () {
     [$db,$trip]=followFixture();
     $a=followTicket();$b=followTicket(['id'=>'second','train_number_en'=>189,'train_number'=>'۱۸۹','time'=>'۱۵:۲۰']);

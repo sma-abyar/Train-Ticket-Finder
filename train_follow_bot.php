@@ -327,10 +327,24 @@ function showTrainAlertTrips($chatId): void
 
 function sendTrainResultsFooter(array $trip): void
 {
-    sendMessage($trip['chat_id'], 'تنظیم هشدار سفر '.translateRoute($trip['route']).' · '.$trip['date']."\nاگر دنبال قطار خاصی هستید و پیامش نیامده، ممکن است فعلاً موجود نباشد یا با ظرفیت و فیلترهای سفرتان همخوان نباشد.\nاز فهرست کامل این سفر انتخابش کنید تا اگر موجود و مطابق تنظیمات شد، خبرتان کنیم.",
-        ['inline_keyboard'=>[
-            [['text'=>'انتخاب قطارهای هشدار این سفر', 'callback_data'=>'train_follow_' . $trip['id']]],
-            [['text'=>'فیلترهای این سفر', 'callback_data'=>'trip_settings_' . $trip['id']],
-                ['text'=>'مدیریت هشدارهای سفرها', 'callback_data'=>'train_follow_trips']],
-        ]], true, null);
+    $db = initDatabase();
+    $token = bin2hex(random_bytes(16));
+    followSql($db, 'INSERT INTO ticket_trip_hints(trip_id,claim_token,claimed_at)VALUES(:id,:token,:now)
+        ON CONFLICT(trip_id) DO UPDATE SET claim_token=excluded.claim_token,claimed_at=excluded.claimed_at
+        WHERE ticket_trip_hints.sent_at IS NULL AND (ticket_trip_hints.claimed_at IS NULL OR ticket_trip_hints.claimed_at<:expired)',[
+        ':id'=>(int)$trip['id'], ':token'=>$token, ':now'=>time(), ':expired'=>time()-300]);
+    if ($db->changes() !== 1) { $db->close(); return; }
+    $sent = false;
+    try {
+        $sent = sendMessage($trip['chat_id'], 'تنظیم هشدار سفر '.translateRoute($trip['route']).' · '.$trip['date']."\nاگر دنبال قطار خاصی هستید و پیامش نیامده، ممکن است فعلاً موجود نباشد یا با ظرفیت و فیلترهای سفرتان همخوان نباشد.\nاز فهرست کامل این سفر انتخابش کنید تا اگر موجود و مطابق تنظیمات شد، خبرتان کنیم.",
+            ['inline_keyboard'=>[
+                [['text'=>'انتخاب قطارهای هشدار این سفر', 'callback_data'=>'train_follow_' . $trip['id']]],
+                [['text'=>'فیلترهای این سفر', 'callback_data'=>'trip_settings_' . $trip['id']],
+                    ['text'=>'مدیریت هشدارهای سفرها', 'callback_data'=>'train_follow_trips']],
+            ]], true, null, ['kind'=>'trip_hint', 'trip_id'=>(int)$trip['id']]);
+    } finally {
+        followSql($db, 'UPDATE ticket_trip_hints SET sent_at=:sent,claim_token=NULL,claimed_at=NULL WHERE trip_id=:id AND claim_token=:token', [
+            ':sent'=>$sent ? time() : null, ':id'=>(int)$trip['id'], ':token'=>$token]);
+        $db->close();
+    }
 }

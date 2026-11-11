@@ -129,9 +129,11 @@ function ensureTelegramDeliveryTables(SQLite3 $db): void
         'CREATE TABLE IF NOT EXISTS ticket_poll_status (trip_id INTEGER PRIMARY KEY,checked_at INTEGER NOT NULL,inventory_ok INTEGER NOT NULL,eligible_count INTEGER NOT NULL,sent_count INTEGER NOT NULL,failed_count INTEGER NOT NULL,suppressed_count INTEGER NOT NULL)',
         'CREATE TABLE IF NOT EXISTS ticket_worker_status (id INTEGER PRIMARY KEY CHECK(id=1),started_at INTEGER,finished_at INTEGER,error TEXT)',
         'CREATE TABLE IF NOT EXISTS ticket_trip_runs (trip_id INTEGER PRIMARY KEY,started_at INTEGER NOT NULL,finished_at INTEGER,error TEXT,claim_token TEXT,claimed_at INTEGER)',
+        'CREATE TABLE IF NOT EXISTS ticket_trip_hints (trip_id INTEGER PRIMARY KEY,claim_token TEXT,claimed_at INTEGER,sent_at INTEGER)',
         'CREATE TABLE IF NOT EXISTS ticket_reservation_callbacks (token TEXT PRIMARY KEY,chat_id TEXT NOT NULL,list_id INTEGER NOT NULL,ticket_id TEXT NOT NULL,coupe INTEGER NOT NULL,expires_at INTEGER NOT NULL)',
         'CREATE TRIGGER IF NOT EXISTS delete_ticket_delivery AFTER DELETE ON user_trips BEGIN DELETE FROM telegram_ticket_delivery WHERE trip_id=OLD.id; DELETE FROM ticket_poll_status WHERE trip_id=OLD.id; END',
         'CREATE TRIGGER IF NOT EXISTS delete_ticket_trip_runs AFTER DELETE ON user_trips BEGIN DELETE FROM ticket_trip_runs WHERE trip_id=OLD.id; END',
+        'CREATE TRIGGER IF NOT EXISTS delete_ticket_trip_hints AFTER DELETE ON user_trips BEGIN DELETE FROM ticket_trip_hints WHERE trip_id=OLD.id; END',
     ] as $sql) { if (!$db->exec($sql)) { throw new RuntimeException($db->lastErrorMsg()); } }
     $columns=[];$rows=$db->query('PRAGMA table_info(ticket_trip_runs)');while($row=$rows->fetchArray(SQLITE3_ASSOC)){$columns[]=$row['name'];}$rows->finalize();
     if(array_diff(['claim_token','claimed_at'],$columns)){

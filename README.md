@@ -140,8 +140,9 @@ filters still apply.
 New trips created through the setup flow default to **all trains** and start
 checking immediately. Existing subscriptions keep their saved settings on upgrade.
 Clearing the selected list pauses alerts; it never falls back to all trains.
-The "all trains" and "all except muted" modes retain the existing per-poll notification behavior;
-transition-only notifications apply to the selected-trains mode.
+All enabled modes notify on availability or sufficient-capacity transitions;
+unchanged inventory does not generate repeated alerts. Each new alert uses a
+normal Telegram notification, without requesting silent delivery.
 
 Every ticket message includes "دیگه این قطار رو نمی‌خوام". In all-trains mode,
 this switches the trip to all-except-muted: other trains, including future newly
@@ -151,14 +152,16 @@ same setting can be edited in the Mini App or native picker. Exclusions are
 stored in the automatically added `excluded_trains` column. Repeated presses
 are idempotent, and callbacks verify the trip owner.
 
-After a batch actually sends ticket messages, one trip-specific footer explains
+One trip-specific footer explains
 how to select other services, including currently unavailable trains. It links
-to that trip's train picker and filters. No footer is sent for a quiet poll.
+to that trip's train picker and filters. It is delivered once per saved trip;
+a failed footer retries independently of accepted tickets. Editing train choices
+does not repeat alerts for other unchanged enabled services.
 The main keyboard also exposes "مدیریت هشدارها" (`/alerts`), while trip lists,
 ticket messages, filter settings, picker confirmations and empty-result messages
 provide contextual navigation. Saving one trip's settings checks that trip only.
 
-For **selected trains**, notifications are sent when a matching service becomes
+For **all enabled modes**, notifications are sent when a matching service becomes
 available or its capacity becomes sufficient. If partial capacity is allowed,
 the first partial opening and later reaching the requested seat count are
 separate events. Steady availability does not repeat notifications. A successful
