@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark"><title>بلیط قطار</title>
-  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=8">
+  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=9">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="telegram-app.php?asset=calendar&amp;v=8" defer></script><script src="telegram-app.php?asset=app&amp;v=8" defer></script>
+  <script src="telegram-app.php?asset=calendar&amp;v=9" defer></script><script src="telegram-app.php?asset=app&amp;v=9" defer></script>
 </head>
 <body>
 <div class="app">
@@ -55,7 +55,7 @@
         <div id="alert-feedback" class="alert-feedback"><span id="alert-count" role="status" aria-live="polite"></span><button type="button" id="save-alerts" class="text-button" hidden>تلاش دوباره</button></div>
         <div id="train-list"></div><p id="train-empty" class="empty" hidden>قطاری با این مشخصات پیدا نشد.</p>
         <p class="list-help">برای قطار ناموجود هم هشدار بگذار؛ با باز شدن ظرفیت خبرت می‌کنیم.</p>
-        <details class="inventory-details"><summary>وضعیت بررسی و ارسال</summary><p id="catalog-time" class="small"></p></details>
+        <details class="inventory-details"><summary>وضعیت بررسی و ارسال</summary><p id="catalog-time" class="small"></p><button id="notification-diagnostics" type="button" class="secondary full">گرفتن گزارش مشکل ارسال</button><p id="diagnostics-hint" class="small" hidden>این گزارش را انتخاب و کپی کن و برای پشتیبانی بفرست. شامل توکن ربات یا مشخصات مسافران نیست.</p><textarea id="notification-report" readonly dir="ltr" aria-label="گزارش مشکل ارسال" rows="12" hidden></textarea></details>
       </div>
     </section>
     <section id="success-view" hidden class="success"><div class="success-mark">✓</div><h1 tabindex="-1">سفر ثبت شد</h1><p id="success-summary"></p><p class="intro">هشدار همهٔ قطارهای این سفر فعال است.</p><p id="success-approval" class="notice" hidden>پایش پس از تأیید حساب توسط مدیر آغاز می‌شود.</p><button type="button" id="success-alerts" class="primary full">انتخاب قطارهای دلخواه</button><button type="button" id="success-trips" class="secondary full">دیدن سفرهای من</button></section>

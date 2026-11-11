@@ -36,7 +36,7 @@ try {
     fclose($socket);
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
-        'train_follows.php', 'train_follow_bot.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
+        'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
         'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
@@ -53,6 +53,7 @@ try {
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path === '/telegram-alerts.php') { require __DIR__ . '/telegram-alerts.php'; return; }
 if ($path === '/telegram-app.php') { require __DIR__ . '/telegram-app.php'; return; }
+if ($path === '/ticket-worker-health.php') { require __DIR__.'/ticket-worker-health.php'; return; }
 if (preg_match('/\.(css|js|woff2)$/D',$path)) { http_response_code(403); echo 'Forbidden'; return; }
 $payload = $_POST;
 if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0) {
@@ -93,7 +94,8 @@ if ($path === '/search') {
     }
     echo '{"ok":true}';
 } elseif ($path === '/train/reservation/ticket-1/0') {
-    echo '{"rsid":"mock-reservation"}';
+    if(is_file(__DIR__.'/reservation-failure')) { echo '{"status":"failed"}'; }
+    else { echo '{"status":"success","rsid":"mock-reservation"}'; }
 } else {
     http_response_code(404);
     echo '{"ok":false}';
@@ -152,8 +154,9 @@ $db->exec("INSERT INTO traveler_lists (id,chat_id,name,members) VALUES (11,'101'
 $db->exec("INSERT INTO travelers (id,chat_id,first_name,last_name,national_code,passenger_type,gender,wheelchair) VALUES
     (1,'101','Test','One','0000000000',0,1,1),
     (2,'303','Test','Two','0000000000',0,1,0),(3,'303','Test','Three','0000000000',0,1,0),
-    (4,'303','Test','Four','0000000000',0,1,0),(5,'303','Test','Infant','0000000000',2,1,0)");
+    (4,'303','Test','Four','0000000000',0,1,0),(5,'303','Test','Infant','0000000000',2,1,0),(6,'202','Test','Six','0000000000',0,1,0)");
 $db->exec("UPDATE traveler_lists SET members='[1]' WHERE id=11");
+$db->exec("UPDATE traveler_lists SET members='[6]' WHERE id=22");
 $db->exec("INSERT INTO traveler_lists (id,chat_id,name,members) VALUES (33,'303','Large group','[2,3,4]'),(34,'303','With infant','[2,5]')");
 $future = (new DateTimeImmutable('tomorrow', new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
 $trip = ['route'=>'tehran-mashhad','date'=>$future,'return_date'=>$future,'count'=>1,'type'=>0,'coupe'=>0,'filter'=>0];
@@ -625,6 +628,69 @@ PHP);
     [$status,$on]=$app($switch);
     verify($status===200 && $on['data']['mode']==='all','Turning the service back on preserves all/future-train semantics');
     verify(count($readRequests())===$before,'Switch changes must not refetch upstream inventory or send messages');
+    // A malformed optional passenger list must never prevent available-ticket alerts.
+    $inventory['data']['data']['departure'][0]['counting_en']=10;
+    $inventory['data']['data']['departure'][0]['counting']='۱۰';
+    file_put_contents($temp.'/override-search.json',json_encode($inventory,JSON_UNESCAPED_UNICODE));
+    $db=new SQLite3($temp.'/users.db');$db->exec("UPDATE traveler_lists SET members='1' WHERE id=11");$db->close();
+    $before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    $sent=$newMessages($before);
+    verify(count(array_filter($sent,static fn($r)=>str_contains($r['payload']['text'],'بلیط موجود است')&&(string)$r['payload']['chat_id']==='101'))===1,'Malformed passenger lists cannot swallow the ticket message or purchase button');
+    foreach($sent as $message) {
+        if((string)$message['payload']['chat_id']==='101' && str_contains($message['payload']['text'],'بلیط موجود است')) {
+            $buttons=array_merge(...json_decode($message['payload']['reply_markup'],true)['inline_keyboard']);
+            verify(count(array_filter($buttons,static fn($b)=>str_starts_with($b['callback_data']??'','reserve_')))===0,'Invalid passenger lists cannot create zero-passenger reservation buttons');
+        }
+    }
+    file_put_contents($temp.'/empty-list-management.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$lists=listTravelerLists('101');if(count($lists)!==1 || $lists[0]['member_count']!==0)throw new RuntimeException('Empty lists must remain accessible for editing');
+PHP);
+    runPhp(array_merge($php,[$temp.'/empty-list-management.php']),$temp);
+    // Reporting uses signed ownership and reads stored status, never send/fetch APIs.
+    $before=count($readRequests());
+    [$status,$report]=$app(['init_data'=>$auth,'action'=>'diagnostics','trip_id'=>1]);
+    verify($status===200 && $report['data']['cron']['stage']==='finished','Web report includes the CLI checkpoint without shell access');
+    verify($report['data']['cron']['sqlite'] && $report['data']['cron']['curl'],'CLI extensions are reported separately from web PHP');
+    verify(count($readRequests())===$before,'Reading diagnostics cannot fetch inventory or send Telegram messages');
+    verify(!str_contains(json_encode($report),'chat_id') && !str_contains(json_encode($report),'BOT_TOKEN'),'Web report excludes identifiers and credentials');
+    verify($app(['init_data'=>$authFor(202),'action'=>'diagnostics','trip_id'=>1])[0]===404,'Diagnostics enforce trip ownership');
+    verify($app(['init_data'=>'invalid','action'=>'diagnostics','trip_id'=>1])[0]===401,'Diagnostics cannot be accessed with an unsigned browser request');
+    verify($publicGet('/ticket-worker-health.php')[0]!==200,'Runtime health checkpoints are not public endpoints');
+    // The second historical schema has a membership relation, not JSON members.
+    $db=new SQLite3($temp.'/users.db');
+    $db->exec('CREATE TABLE IF NOT EXISTS traveler_list_members(list_id INTEGER,traveler_id INTEGER)');
+    $db->exec('INSERT INTO traveler_list_members VALUES(11,1),(11,6),(22,6)');
+    $db->exec('ALTER TABLE traveler_lists DROP COLUMN members');$db->close();
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    $sent=array_values(array_filter($newMessages($before),static fn($r)=>str_contains($r['payload']['text'],'بلیط موجود است')&&(string)$r['payload']['chat_id']==='101'));
+    verify(count($sent)===1 && str_contains($sent[0]['payload']['reply_markup'],'reserve_'),'Legacy list schema cannot block alerts and retains owned reservation buttons');
+    file_put_contents($temp.'/reservation-result.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$db=initDatabase();$db->exec("INSERT INTO private_info(chat_id,person_name,phone_number,email) VALUES('101','Test Person','9123456789','test@example.test')");
+$db->exec('DROP TABLE IF EXISTS temporary_food_selections');
+saveReservationSession('101',['list_id'=>11,'ticket_id'=>'ticket-1','coupe'=>0]);
+completeReservation('101');
+PHP);
+    touch($temp.'/reservation-failure');$before=count($readRequests());
+    runPhp(array_merge($php,[$temp.'/reservation-result.php']),$temp);
+    $sent=$newMessages($before);verify(count($sent)===1 && empty($sent[0]['payload']['reply_markup']),'Failed reservations still send an explanation and never invent a payment button');
+    file_put_contents($temp.'/invalid-reservation.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';handleListReservation('reserve_token_'.str_repeat('f',32),'101');
+PHP);
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/invalid-reservation.php']),$temp);
+    verify(count($newMessages($before))===1,'Expired reservation callbacks must send an explanation, not silently return a string');
+    $process=proc_open([PHP_BINARY,'-n',$temp.'/check_tickets.php'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,$temp);
+    fclose($pipes[0]);stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
+    verify(proc_close($process)===1 && str_contains($errors,'Ticket check failed:'),'Reproduce cron PHP without SQLite');
+    [$status,$report]=$app(['init_data'=>$auth,'action'=>'diagnostics','trip_id'=>1]);
+    verify($status===200 && in_array('cron_sqlite_missing',$report['data']['issues'],true) && in_array('worker_failed',$report['data']['issues'],true),'Startup failure must remain readable from web PHP without shell access');
+    $publicHealth=$publicGet('/ticket-worker-health.php');verify($publicHealth[0]===404 && $publicHealth[1]==='','Checkpoint guard must hide runtime data even when requested directly');
+    echo "PASS Delivery repair: malformed and legacy passenger lists, owned web diagnostics, cron checkpoint and visible reservation failures\n";
     echo "PASS Immediate switches: ownership, full keys, boolean validation, idempotent retries and no upstream fan-out\n";
     echo "PASS Delivery regression: long callback, raw provider punctuation, durable 429 cooldown, lower-capacity retry, acceptance status and quiet steady state\n";
     echo "PASS Unified Mini App API: signed bootstrap, complete create, retry, conflicts, local preferences and ownership\n";

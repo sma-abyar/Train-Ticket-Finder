@@ -301,12 +301,31 @@
     if (busy || (alertDirty && !mayLeave())) return;
     alertDirty = false; pendingAlertOperation = null; alertSaveStatus = 'saved'; alertSyncUnknown = false;trainFilter='all';$('train-search').value='';
     if (!showView('alerts')) return;
+    $('notification-report').hidden=true;$('diagnostics-hint').hidden=true;$('notification-report').value='';
     $('alert-controls').hidden = true; $('alert-trip').textContent = 'در حال دریافت قطارها…'; setBusy(true);
     try { setCatalog(await api('load',{trip_id:id})); }
     catch (error) { notice(error.message + ' سفر را دوباره از فهرست باز کن.',true); }
     finally { setBusy(false); }
   }
   function saveAlerts() { if (pendingAlertOperation) return persistAlertChange(pendingAlertOperation); }
+  async function showNotificationDiagnostics() {
+    if(busy||!catalog)return;
+    const button=$('notification-diagnostics'),id=catalog.trip_id;button.disabled=true;
+    try {
+      const report=await api('diagnostics',{trip_id:id});
+      if(catalog.trip_id!==id)return;
+      const labels={account_pending:'حساب هنوز تأیید نشده است.',trip_expired:'تاریخ سفر گذشته است.',alerts_disabled:'هشدار این سفر خاموش است.',
+        worker_never_ran:'هنوز اجرای کرون ثبت نشده است؛ فرمان و زمان‌بندی کرون را در پنل هاست بررسی کن.',worker_failed:'اجرای کرون خطا داشته است؛ مرحله و نسخهٔ PHP در گزارش آمده است.',
+        cron_php_unsupported:'نسخهٔ PHP کرون باید حداقل ۸ باشد.',cron_sqlite_missing:'افزونهٔ SQLite در PHP کرون فعال نیست.',cron_curl_missing:'افزونهٔ cURL در PHP کرون فعال نیست.',
+        worker_stalled:'اجرای کرون شروع شده ولی بیش از ۵ دقیقه پایانش ثبت نشده است.',worker_running:'کرون در حال اجراست.',worker_not_recent:'بیش از ۵ دقیقه از آخرین پایان کرون گذشته است.',
+        inventory_failed:'آخرین دریافت موجودی توسط کرون ناموفق بوده است.',telegram_send_failed:'آخرین ارسال به تلگرام ناموفق بوده؛ کد خطا در گزارش آمده است.',
+        unchanged_selected_trains:'وضعیت قطارهای انتخابی ثابت بوده؛ هشدار تکراری ارسال نشده است.'};
+      const messages=(report.issues||[]).map(issue=>labels[issue]||issue);
+      $('notification-report').value=(messages.length?messages.join('\n'):'در گزارش ذخیره‌شده، مانع مشخصی ثبت نشده است.')+'\n\n'+JSON.stringify(report,null,2);
+      $('notification-report').hidden=false;$('diagnostics-hint').hidden=false;$('notification-report').focus();
+    } catch(error) { notice(error.message,true); }
+    finally { button.disabled=false; }
+  }
   async function refreshCatalog() {
     if (busy || !catalog || (alertDirty && !mayLeave())) return;
     setBusy(true);
@@ -321,6 +340,7 @@
   $('step-2').addEventListener('input',()=>{if(editTrip){preferencesDirty=true;markClose();return;}try{Object.assign(draft,readPreferences());persist();}catch(_){} });
   $('new-trip').onclick=freshCreate;$('success-trips').onclick=()=>showView('trips');$('success-alerts').onclick=()=>openAlerts(createdTrip.id);$('alerts-back').onclick=()=>showView('trips');$('save-alerts').onclick=saveAlerts;$('refresh-trains').onclick=refreshCatalog;$('train-search').oninput=()=>catalog&&renderTrains();
   ['all','on','stock'].forEach(key=>$('filter-'+key).onclick=()=>{if(!catalog||busy)return;trainFilter=key;renderTrains();});
+  $('notification-diagnostics').onclick=showNotificationDiagnostics;
   document.querySelectorAll('[name=alert-mode]').forEach(input=>input.onchange=()=>{if(busy)return;return persistAlertChange({kind:'mode',mode:input.value});});
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{if(!boot||busy)return;const next=b.dataset.nav;if(next==='create')freshCreate();else if(next==='alerts'){if(!boot.trips.length){showView('trips');notice('اول یک سفر ثبت کن؛ بعد قطارهایش را انتخاب کن.');}else{showView('trips');notice('سفر موردنظر را برای تنظیم هشدار انتخاب کن.');}}else showView(next);});
   document.querySelector('.brand-mark').onclick=e=>{e.preventDefault();if(boot)freshCreate();};

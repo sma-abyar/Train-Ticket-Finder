@@ -38,6 +38,9 @@ try {
         $data = miniAppPreferences($db, $chat, $body);
     } elseif ($action === 'delete_trip') {
         $data = miniAppDeleteTrip($db, $chat, $body);
+    } elseif ($action === 'diagnostics') {
+        if (!is_int($body['trip_id'] ?? null) || $body['trip_id']<1) { throw new InvalidArgumentException('سفر معتبر نیست.',400); }
+        $data=ticketNotificationDiagnostics($db,ownedFollowTrip($db,$body['trip_id'],$chat));
     } elseif (in_array($action, ['load','refresh','save','set_train'], true)) {
         if (!is_int($body['trip_id'] ?? null) || $body['trip_id'] < 1) { throw new InvalidArgumentException('سفر معتبر نیست.', 400); }
         $trip = ownedFollowTrip($db, $body['trip_id'], $chat);

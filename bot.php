@@ -6,6 +6,8 @@ require_once __DIR__ . '/trip_preferences.php';
 require_once __DIR__ . '/trip_filter_ui.php';
 require_once __DIR__ . '/train_follow_bot.php';
 require_once __DIR__ . '/telegram_delivery.php';
+require_once __DIR__ . '/traveler_list_storage.php';
+require_once __DIR__ . '/notification_diagnostics.php';
 
 // env file loader
 function loadEnv($filePath)
@@ -1859,7 +1861,7 @@ function listTravelerLists($chat_id)
     try {
         // ابتدا لیست‌ها را می‌گیریم
         $stmt = $db->prepare("
-            SELECT id, name, members
+            SELECT id, name
             FROM traveler_lists
             WHERE chat_id = :chat_id
             ORDER BY created_at DESC
@@ -1870,7 +1872,7 @@ function listTravelerLists($chat_id)
 
         $lists = [];
         while ($list = $result->fetchArray(SQLITE3_ASSOC)) {
-            $members = json_decode($list['members'], true) ?: [];
+            $members = ownedTravelerMemberIds($db, (int)$list['id'], (string)$chat_id);
             $member_info = [];
             $seat_count = 0;
 
@@ -1917,7 +1919,8 @@ function listTravelerLists($chat_id)
                 }
             }
 
-            $list['member_count'] = count($members);
+            // Only existing passengers owned by this user can be booked.
+            $list['member_count'] = count($member_info);
             $list['seat_count'] = $seat_count;
             $list['members'] = empty($member_info) ? 'هیچ مسافری در این لیست وجود ندارد' : implode(' | ', $member_info);
 
@@ -1926,7 +1929,8 @@ function listTravelerLists($chat_id)
 
         return $lists;
 
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
+        error_log('Traveler list buttons unavailable: '.get_class($e));
         return [];
     }
 }
@@ -2026,6 +2030,8 @@ function getTravelersWithFood($chat_id, $list_id)
 {
     $db = initDatabase();
     try {
+        // A first booking with no food options has never saved a food choice.
+        createTemporaryFoodTable();
         // اول اطلاعات مسافران را می‌گیریم
         $travelers = getTravelersFromList($list_id, $chat_id);
 
@@ -2132,22 +2138,7 @@ function getTravelersFromList($list_id, $chat_id)
 {
     $db = initDatabase();
     try {
-        // ابتدا اطلاعات لیست را می‌گیریم
-        $stmt = $db->prepare("
-            SELECT members
-            FROM traveler_lists
-            WHERE id = :list_id AND chat_id = :chat_id
-        ");
-        $stmt->bindValue(':list_id', $list_id, SQLITE3_INTEGER);
-        $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
-        $result = $stmt->execute();
-        $list = $result->fetchArray(SQLITE3_ASSOC);
-
-        if (!$list) {
-            return [];
-        }
-
-        $members = json_decode($list['members'], true) ?: [];
+        $members = ownedTravelerMemberIds($db, (int)$list_id, (string)$chat_id);
         if (empty($members)) {
             return [];
         }
@@ -2183,7 +2174,7 @@ function getTravelersFromList($list_id, $chat_id)
         }
 
         return $travelers;
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         return [];
     }
 }
@@ -2196,6 +2187,8 @@ function getFoodOptions($ticketId, $passengerCount)
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: text/html,application/xhtml+xml,application/xml;q=0.9',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -2278,6 +2271,8 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: application/json',
@@ -2288,9 +2283,10 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
     ]);
 
     $response = curl_exec($ch);
+    $httpStatus=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    return json_decode($response, true);
+    return is_string($response) && $httpStatus>=200 && $httpStatus<300 ? json_decode($response,true) : null;
 }
 
 function modifyTicketMessage($message, $userTrip, $ticket, $lists)
@@ -2308,7 +2304,7 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
 
     // اضافه کردن دکمه برای هر لیست
     foreach ($lists as $list) {
-        if (($list['seat_count'] ?? $list['member_count']) > ticketAvailableSeats($ticket)) {
+        if ((int)$list['member_count']<1 || ($list['seat_count'] ?? $list['member_count']) > ticketAvailableSeats($ticket)) {
             continue;
         }
         $member_count = toPersianNumbers($list['member_count']);
@@ -2344,7 +2340,7 @@ function handleListReservation($callback_data, $chat_id)
     $parts = explode('_', $callback_data);
     if ($resolved === null && (strpos($callback_data,'reserve_token_')===0 || count($parts) !== 5)) {
         file_put_contents('debug.log', "Invalid callback data format\n", FILE_APPEND);
-        return "⚠️ خطا: فرمت داده نامعتبر است";
+        return sendMessage($chat_id,'دکمهٔ رزرو منقضی شده یا معتبر نیست. از پیام تازهٔ بلیط دوباره اقدام کن.',null,true,null);
     }
 
     $list_id = $resolved['list_id'] ?? $parts[2];
@@ -2354,7 +2350,7 @@ function handleListReservation($callback_data, $chat_id)
     // دریافت لیست مسافران
     $travelers = getTravelersFromList($list_id, $chat_id);
     if (empty($travelers)) {
-        return "⚠️ خطا در دریافت اطلاعات مسافران";
+        return sendMessage($chat_id,'این لیست مسافر معتبر ندارد. لیست مسافران را ویرایش کن و از پیام بلیط دوباره رزرو را بزن.',null,true,null);
     }
 
 
@@ -2440,34 +2436,39 @@ function handleFoodSelection($callback_data, $chat_id, $callback_query_id = null
 function completeReservation($chat_id)
 {
     $session = getReservationSession($chat_id);
+    if (!$session || !isset($session['list_id'],$session['ticket_id'],$session['coupe'])) {
+        return sendMessage($chat_id,'اطلاعات این رزرو دیگر در دسترس نیست. از پیام بلیط دوباره شروع کن.',null,true,null);
+    }
     $user = getPrivateInfo($chat_id);
+    if (!$user || empty($user['fullName']) || empty($user['mobileNumber'])) {
+        return sendMessage($chat_id,'برای ادامهٔ رزرو، اطلاعات تماس را تکمیل کن و سپس از پیام بلیط دوباره رزرو را بزن.',
+            ['inline_keyboard'=>[[['text'=>'تکمیل اطلاعات تماس','callback_data'=>'add_private_info']]]],true,null);
+    }
     $travelers = getTravelersWithFood($chat_id, $session['list_id']);
+    if (!$travelers) {
+        return sendMessage($chat_id,'مسافران این رزرو پیدا نشدند. لیست را بررسی کن و دوباره اقدام کن.',null,true,null);
+    }
 
     $result = makeReservation($session['ticket_id'], $travelers, $user, $session['coupe']);
 
-    $keyboard = [
-        [
-            ['text' => 'پرداخت و تهیه‌ی بلیط', 'url' => 'https://ghasedak24.com/train/confirm/' . $result['rsid']]
-        ]
-    ];
-
-    $replyMarkup = ['inline_keyboard' => $keyboard];
-
-    if ($result['status'] === 'success') {
+    $replyMarkup = null;
+    if (is_array($result) && ($result['status'] ?? null) === 'success'
+        && is_string($result['rsid'] ?? null) && trim($result['rsid']) !== '') {
+        $replyMarkup = ['inline_keyboard'=>[[['text'=>'پرداخت و تهیه‌ی بلیط',
+            'url'=>'https://ghasedak24.com/train/confirm/'.rawurlencode($result['rsid'])]]]];
         $message = "خب خب خب ...\n"
             . "خدا رو شکر تونستیم اطلاعات شما رو ثبت کنیم 🤲😊\n"
             . "حالا کافیه برای پرداخت هزینه‌ی بلیط و نهایی شدن خرید، از گزینه‌ی پایین این پیام استفاده کنین 👇\n"
             . "دقت کنین که تا پرداخت نشه، بلیطی به نام شما صادر نمی‌شه 🙈";
     } else {
-        $message = "ای وای! نتونستیم اطلاعاتتون رو \n"
-            . "لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید.";
+        $message = 'رزرو انجام نشد؛ ممکن است ظرفیت یا قیمت تغییر کرده باشد. از پیام تازهٔ بلیط دوباره اقدام کن.';
     }
 
     // پاک کردن اطلاعات موقت و سشن
     clearTemporaryFoodSelections($chat_id, $session['list_id']);
     clearReservationSession($chat_id);
 
-    return sendMessage($chat_id, $message, $replyMarkup);
+    return sendMessage($chat_id, $message, $replyMarkup,true,null);
 }
 
 // توابع کمکی برای مدیریت سشن

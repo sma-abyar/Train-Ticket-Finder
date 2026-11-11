@@ -47,6 +47,7 @@ async function fixture(auth=true){
       data=catalog;if(ambiguous){ambiguous=false;throw new TypeError('Response interrupted');}
     }
     else if(b.action==='delete_trip')data={deleted:true,trip_id:b.trip_id};
+    else if(b.action==='diagnostics')data={report_version:1,issues:['worker_never_ran'],cron:null};
     else data=catalog;return {ok:true,status:200,json:async()=>({ok:true,data:structuredClone(data)})};};
   const window={TrainCalendar:C,Telegram:{WebApp:{initData:auth?'signed':'',ready(){},expand(){},enableClosingConfirmation(){},disableClosingConfirmation(){}}},matchMedia:()=>({matches:false}),scrollTo(){},confirm:()=>true,addEventListener(){}};
   vm.runInNewContext(fs.readFileSync(require.resolve('../telegram-app.js'),'utf8'),{window,document,location:{href:'https://example.test/telegram-app.php',search:''},fetch,URL,URLSearchParams,crypto,sessionStorage:storage,localStorage:storage,AbortController,setTimeout,clearTimeout,Uint8Array,Intl,Date:FakeDate,console});
@@ -102,6 +103,8 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   const filtered=await fixture();await filtered.els['trip-list'].children[0].children[2].onclick();filtered.els['filter-on'].onclick();await toggle(filtered,'188',false);
   assert.equal(trainInput(filtered,'188'),null);assert.equal(filtered.els['filter-on'].focused,true,'Turning off the currently filtered service preserves keyboard focus on the filter');
   filtered.els['filter-all'].onclick();assert.equal(trainInput(filtered,'188').checked,false,'A hidden disabled service can be found and enabled again');
+  const diagnostics=await fixture();await diagnostics.els['trip-list'].children[0].children[2].onclick();await diagnostics.els['notification-diagnostics'].onclick();
+  assert.equal(diagnostics.calls.at(-1).action,'diagnostics');assert.equal(diagnostics.els['notification-report'].hidden,false);assert.match(diagnostics.els['notification-report'].value,/هنوز اجرای کرون ثبت نشده/);assert.equal(diagnostics.els['notification-diagnostics'].disabled,false);
   const rapid=await fixture();await rapid.els['trip-list'].children[0].children[2].onclick();const releaseSwitch=rapid.holdSwitch();const toggling=toggle(rapid,'188',false);await flush();await toggle(rapid,'189',false);
   assert.equal(rapid.els.main.inert,false,'The content and live status stay accessible during switch persistence');assert.equal(trainInput(rapid,'189').disabled,true);
   assert.equal(rapid.calls.filter(c=>c.action==='set_train').length,1);assert.equal(trainInput(rapid,'189').checked,true,'Busy switches cannot visually claim a second unsaved change');releaseSwitch();await toggling;assert.equal(trainInput(rapid,'188').checked,false);assert.equal(trainInput(rapid,'189').checked,true);

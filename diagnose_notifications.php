@@ -10,7 +10,7 @@ try {
     $has=static fn(string $table)=>(bool)followSql($db,'SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=:name',[':name'=>$table])->fetchArray(SQLITE3_NUM);
     $worker=$has('ticket_worker_status')?$db->querySingle('SELECT * FROM ticket_worker_status WHERE id=1',true):null;
     $summary=['server_time'=>(new DateTimeImmutable('now',new DateTimeZone('Asia/Tehran')))->format(DATE_ATOM),
-        'database_exists'=>true,'worker'=>$worker ?: null,'approved_users'=>(int)$db->querySingle('SELECT COUNT(*) FROM users WHERE approved=1'),
+        'database_exists'=>true,'worker'=>$worker ?: null,'cron'=>ticketWorkerHealth(),'approved_users'=>(int)$db->querySingle('SELECT COUNT(*) FROM users WHERE approved=1'),
         'active_trips'=>0,'enabled_approved_trips'=>0,
         'last_poll_at'=>$has('ticket_poll_status')?$db->querySingle('SELECT MAX(checked_at) FROM ticket_poll_status'):null,
         'last_telegram_acceptance_at'=>$has('telegram_ticket_delivery')?$db->querySingle('SELECT MAX(last_success_at) FROM telegram_ticket_delivery'):null,

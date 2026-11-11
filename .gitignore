@@ -2,3 +2,5 @@
 ticket-check.lock
 *.catalog.lock
 __pycache__/
+ticket-worker-health.php
+.worker-health-*.php
