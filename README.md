@@ -216,6 +216,13 @@ with `python tools/build_upload.py output.zip` to preserve public file permissio
 
 For notification delivery failures, see [delivery diagnostics and fixes](NOTIFICATION_DELIVERY.md).
 
+Broadcasts snapshot approved recipients atomically, resume from the existing queue
+after interruptions, and expose admin-only delivery progress through
+`/broadcast_status`. Run `send_queue.php` once per minute; keep ticket polling on
+its existing three-minute schedule. Both workers support local shared-host CGI
+execution and reject HTTP requests. Delivery failures and revoked approvals stay
+visible instead of being counted as successful sends.
+
 The redesigned train list uses independent on/off switches with immediate saving,
 idempotent retries and server reconciliation after interrupted responses. See
 [the redesign and installation notes](MINI_APP_REDESIGN.md).

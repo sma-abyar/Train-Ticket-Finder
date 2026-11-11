@@ -37,7 +37,7 @@ try {
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'send_queue.php', 'cron_probe.php', 'cron_runtime.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
-        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','broadcast_queue.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
     mkdir($temp.'/fonts');mkdir($temp.'/fonts/webfonts');
@@ -481,8 +481,9 @@ PHP);
     $before=count($readRequests());
     runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
     $remaining=array_values(array_filter($newMessages($before),static fn($message)=>str_contains($message['payload']['text'],'بلیط موجود است')));
-    verify(count($remaining)===2 && str_contains($remaining[0]['payload']['text'],'۱۸۹') && str_contains($remaining[1]['payload']['text'],'۱۹۰'),
+    verify(count($remaining)===2 && str_contains(implode('\n',array_column(array_column($remaining,'payload'),'text')),'۱۸۹') && str_contains(implode('\n',array_column(array_column($remaining,'payload'),'text')),'۱۹۰'),
         'Muting A must leave B and the newly discovered C enabled');
+    verify(str_contains($remaining[0]['payload']['text'],'۱۹۰'),'A newly discovered unattempted service gets a turn before already-attempted services');
     runPhp(array_merge($php,[$temp.'/message-controls.php','101',$restore]),$temp);
     verify($api(['init_data'=>$auth,'trip_id'=>1])[1]['data']['mode']==='all','Restore action should re-enable the muted train');
     $before=count($readRequests());
@@ -741,6 +742,65 @@ PHP);
         verify(count($readRequests())===$before,'Forbidden CGI HTTP requests cannot fetch inventory or send messages');
         echo "PASS Actual CGI cron: ticket and queue delivery, runtime checkpoint and HTTP denial\n";
     }
+    file_put_contents($temp.'/broadcast-scenario.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$text='خبر تست * _ [ ] ۱۲۳ https://example.test/123?q=456';
+file_put_contents(__DIR__.'/broadcast-recipients.json',json_encode(getApprovedUsers()));
+$first=broadcastMessage($text,'999','integration-broadcast-1');$again=broadcastMessage($text,'999','integration-broadcast-1');
+if(!$first['created']||$again['created']||$first['id']!==$again['id'])throw new RuntimeException('Idempotency failed');
+$queue=initQueueDatabase();$before=$queue->querySingle('SELECT COUNT(*) FROM broadcasts');
+broadcastMessage('unauthorized','101','unauthorized');
+if($queue->querySingle('SELECT COUNT(*) FROM broadcasts')!==$before)throw new RuntimeException('Admin scope failed');
+$db=initDatabase();$db->exec("UPDATE users SET approved=0 WHERE chat_id='202'");
+PHP);
+    runPhp(array_merge($php,[$temp.'/broadcast-scenario.php']),$temp);
+    $recipients=json_decode(file_get_contents($temp.'/broadcast-recipients.json'),true);
+    file_put_contents($temp.'/telegram-error.json',json_encode(['chat_id'=>'303','error_code'=>403,'description'=>'Forbidden: bot was blocked']));
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/send_queue.php']),$temp,'Telegram delivery:');
+    $broadcastMessages=$newMessages($before);$actualChats=[];
+    foreach($broadcastMessages as$message){
+        verify($message['payload']['text']==='خبر تست * _ [ ] ۱۲۳ https://example.test/123?q=456','Broadcast text, Persian digits and URL digits must remain intact');
+        verify(!isset($message['payload']['parse_mode']),'Broadcasts cannot accidentally become malformed Markdown');
+        $actualChats[]=(string)$message['payload']['chat_id'];
+    }
+    $expectedChats=array_values(array_diff($recipients,['202']));sort($expectedChats);sort($actualChats);
+    verify($actualChats===$expectedChats,'Broadcast attempts must reach every approved snapshot recipient except revoked approval');
+    $queueDb=new SQLite3($temp.'/queue.db');
+    verify((int)$queueDb->querySingle("SELECT COUNT(*) FROM message_queue WHERE broadcast_id=1 AND status='sent'")===count($recipients)-2,'Successful recipients are recorded independently');
+    verify((int)$queueDb->querySingle("SELECT COUNT(*) FROM message_queue WHERE broadcast_id=1 AND status='failed' AND error_code=403")===1,'Blocked recipient has an explicit failure');
+    verify((int)$queueDb->querySingle("SELECT COUNT(*) FROM message_queue WHERE broadcast_id=1 AND status='skipped'")===1,'Revoked approval is explicitly excluded');
+    $queueDb->close();unlink($temp.'/telegram-error.json');
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/send_queue.php']),$temp);
+    verify(count($newMessages($before))===0,'Finished or permanently failed broadcast recipients are not resent');
+    file_put_contents($temp.'/broadcast-status.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+showBroadcastStatus('101');showBroadcastStatus('999');
+PHP);
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/broadcast-status.php']),$temp);
+    $statusMessages=$newMessages($before);verify(count($statusMessages)===1 && (string)$statusMessages[0]['payload']['chat_id']==='999','Broadcast progress is admin-only');
+    file_put_contents($temp.'/trip-isolation.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$db=initDatabase();$good=ownedFollowTrip($db,1,'101');$bad=$good;$bad['route']='tehran-qom';
+$badId=saveUserTrip('101',$bad);$bad=ownedFollowTrip($db,$badId,'101');
+$batch=new TicketSearchBatch(static function($payload){if($payload['route']==='tehran-qom')throw new RuntimeException('Synthetic per-trip error');return requestTicketSearch($payload);});
+foreach([$bad,$good]as$trip){processTicketTripSafely($trip,$batch);}
+if($db->querySingle('SELECT error FROM ticket_trip_runs WHERE trip_id='.(int)$badId)!=='RuntimeException')throw new RuntimeException('Failure was not recorded');
+if($db->querySingle('SELECT error FROM ticket_trip_runs WHERE trip_id=1')!==null)throw new RuntimeException('Healthy trip did not continue');
+$db->exec("UPDATE users SET approved=0 WHERE chat_id='101'");
+PHP);
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/trip-isolation.php']),$temp,'Ticket trip failed');
+    verify(count($newMessages($before))>=2,'An unexpected per-trip error cannot swallow a later user trip ticket or footer');
+    file_put_contents($temp.'/revoked-trip.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';processUserTrips('101');
+PHP);
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/revoked-trip.php']),$temp);
+    verify(count($readRequests())===$before,'A revoked account cannot trigger manual ticket searches or delivery');
+    echo "PASS Broadcast delivery: all approved recipients, atomic idempotent enqueue, plain raw text, revoked/blocked states, admin progress and no resends\n";
+    echo "PASS Trip isolation: a failed trip cannot stop healthy ones and revoked accounts cannot send\n";
     echo "PASS Script-only cron probe: local runtime, signed report, no bot calls and protected result\n";
     echo "PASS Delivery repair: malformed and legacy passenger lists, owned web diagnostics, cron checkpoint and visible reservation failures\n";
     echo "PASS Immediate switches: ownership, full keys, boolean validation, idempotent retries and no upstream fan-out\n";

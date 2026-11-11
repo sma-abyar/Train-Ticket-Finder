@@ -8,7 +8,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = '''bot.php check_tickets.php cron_probe.php cron_runtime.php runFetchTickets.php database.php
-diagnose_notifications.php notification_diagnostics.php expired_trips.php send_queue.php telegram_delivery.php
+diagnose_notifications.php notification_diagnostics.php expired_trips.php send_queue.php telegram_delivery.php broadcast_queue.php
 telegram_webapp_auth.php telegram-alerts.php telegram-app.php miniapp_assets.php
 ticket_search.php train_follow_bot.php train_follows.php traveler.php travelerlist.php
 trip_app.php trip_dates.php trip_filter_ui.php trip_preferences.php trip.php user.php traveler_list_storage.php

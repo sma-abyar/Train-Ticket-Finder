@@ -319,6 +319,7 @@
         cron_php_unsupported:'نسخهٔ PHP کرون باید حداقل ۸ باشد.',cron_sqlite_missing:'افزونهٔ SQLite در PHP کرون فعال نیست.',cron_curl_missing:'افزونهٔ cURL در PHP کرون فعال نیست.',
         worker_stalled:'اجرای کرون شروع شده ولی بیش از ۵ دقیقه پایانش ثبت نشده است.',worker_running:'کرون در حال اجراست.',worker_not_recent:'بیش از ۵ دقیقه از آخرین پایان کرون گذشته است.',
         inventory_failed:'آخرین دریافت موجودی توسط کرون ناموفق بوده است.',telegram_send_failed:'آخرین ارسال به تلگرام ناموفق بوده؛ کد خطا در گزارش آمده است.',
+        trip_processing_failed:'بررسی این سفر با خطا پایان یافته؛ نوع خطا در گزارش آمده است و سفرهای دیگر ادامه دارند.',
         unchanged_selected_trains:'وضعیت قطارهای انتخابی ثابت بوده؛ هشدار تکراری ارسال نشده است.'};
       const messages=(report.issues||[]).map(issue=>labels[issue]||issue);
       $('notification-report').value=(messages.length?messages.join('\n'):'در گزارش ذخیره‌شده، مانع مشخصی ثبت نشده است.')+'\n\n'+JSON.stringify(report,null,2);

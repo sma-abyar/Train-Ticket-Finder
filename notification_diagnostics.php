@@ -48,6 +48,7 @@ function ticketNotificationDiagnostics(SQLite3 $db, array $trip, ?int $now=null)
     $now=$now??time();$id=(int)$trip['id'];
     $worker=$db->querySingle('SELECT started_at,finished_at,error FROM ticket_worker_status WHERE id=1',true)?:null;
     $health=ticketWorkerHealth();
+    $tripRun=followSql($db,'SELECT started_at,finished_at,error FROM ticket_trip_runs WHERE trip_id=:id',[':id'=>$id])->fetchArray(SQLITE3_ASSOC)?:null;
     $poll=followSql($db,'SELECT checked_at,inventory_ok,eligible_count,sent_count,failed_count,suppressed_count FROM ticket_poll_status WHERE trip_id=:id',[':id'=>$id])->fetchArray(SQLITE3_ASSOC)?:null;
     $approved=(bool)followSql($db,'SELECT 1 FROM users WHERE chat_id=:chat AND approved=1',[':chat'=>(string)$trip['chat_id']])->fetchArray(SQLITE3_NUM);
     $delivery=[];$rows=followSql($db,'SELECT kind,last_attempt_at,last_success_at,error_code,attempts FROM telegram_ticket_delivery WHERE trip_id=:id',[':id'=>$id]);
@@ -69,6 +70,7 @@ function ticketNotificationDiagnostics(SQLite3 $db, array $trip, ?int $now=null)
     if ($poll && !(bool)$poll['inventory_ok']) { $issues[]='inventory_failed'; }
     if ($poll && (int)$poll['failed_count']>0) { $issues[]='telegram_send_failed'; }
     if ($poll && (int)$poll['suppressed_count']>0) { $issues[]='unchanged_selected_trains'; }
+    if(!empty($tripRun['error'])){$issues[]='trip_processing_failed';}
     $catalog=loadTrainCatalog($db,$trip);$trains=[];
     foreach ($catalog['tickets']??[] as $ticket) {
         $trains[]=['number'=>$ticket['train_number']??null,'time'=>$ticket['time']??null,'capacity'=>ticketAvailableSeats($ticket)]
@@ -77,5 +79,5 @@ function ticketNotificationDiagnostics(SQLite3 $db, array $trip, ?int $now=null)
     return ['report_version'=>2,'server_time'=>$now,'web_php'=>PHP_VERSION,'issues'=>$issues,'probe'=>ticketCronProbeResult(),
         'cron'=>$health,'worker'=>$worker,'trip'=>['id'=>$id,'approved'=>$approved,'mode'=>tripFollowMode($trip),
             'required_seats'=>(int)$trip['count'],'partial_capacity'=>(bool)$trip['allow_partial_capacity']],
-        'last_poll'=>$poll,'catalog_updated_at'=>$catalog['updated_at']??null,'trains'=>$trains,'delivery'=>$delivery];
+        'trip_run'=>$tripRun,'last_poll'=>$poll,'catalog_updated_at'=>$catalog['updated_at']??null,'trains'=>$trains,'delivery'=>$delivery];
 }

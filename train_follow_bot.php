@@ -99,7 +99,7 @@ function processSingleUserTrip($chatId, int $tripId): void
     $trip = followSql($db, 'SELECT * FROM user_trips WHERE id=:id AND chat_id=:chat',
         [':id'=>$tripId, ':chat'=>(string) $chatId])->fetchArray(SQLITE3_ASSOC);
     if ($trip) {
-        fetchTickets($trip);
+        processTicketTripSafely($trip,new TicketSearchBatch('requestTicketSearch'));
     }
 }
 

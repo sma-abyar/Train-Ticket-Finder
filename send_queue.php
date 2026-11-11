@@ -1,48 +1,26 @@
 <?php
-
 require_once __DIR__.'/cron_runtime.php';
 requireLocalPhpCronRuntime();
 chdir(__DIR__);
 $lock=fopen(__DIR__.'/message-queue.lock','c');
 if(!$lock || !flock($lock,LOCK_EX|LOCK_NB)){exit;}
-define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);
-require __DIR__.'/bot.php';
-// اتصال به دیتابیس صف پیام‌ها
-$queueDb = initQueueDatabase();
-
-// دریافت تمام پیام‌های ارسال نشده
-$stmt = $queueDb->query("SELECT id, chat_id, message FROM message_queue WHERE sent = 0 ORDER BY id");
-
-$messages = [];
-while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
-    $messages[] = $row;
+try {
+    define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);
+    require __DIR__.'/bot.php';
+    $queue=new BroadcastQueue(initQueueDatabase());
+    $usersDb=initDatabase();
+    $approved=$usersDb->prepare('SELECT 1 FROM users WHERE chat_id=:chat AND approved=1');
+    $queue->drain(static function(string $chat,string $text): array {
+        $outcome=null;
+        sendMessage($chat,$text,null,false,null,[],$outcome);
+        return $outcome;
+    },static function(string $chat)use($approved): bool {
+        $approved->reset();$approved->bindValue(':chat',$chat,SQLITE3_TEXT);
+        $result=$approved->execute();$isApproved=(bool)$result->fetchArray(SQLITE3_NUM);$result->finalize();
+        return $isApproved;
+    });
+}catch(Throwable $error){
+    writeCronError('Message queue failed: '.get_class($error).PHP_EOL);exit(1);
+}finally{
+    flock($lock,LOCK_UN);fclose($lock);
 }
-
-// اگر پیام جدیدی نبود، اسکریپت همینجا تموم بشه
-if (empty($messages)) {
-    $queueDb->close();
-    exit;
-}
-
-foreach ($messages as $row) {
-    $chatId = $row['chat_id'];
-    $message = $row['message'];
-    $messageId = $row['id'];
-
-    // ارسال پیام
-    $success = sendMessage($chatId, $message);
-
-    if ($success) {
-        // بروزرسانی وضعیت ارسال در صف پیام‌ها
-        $update = $queueDb->prepare("UPDATE message_queue SET sent = 1 WHERE id = :id");
-        $update->bindValue(':id', $messageId, SQLITE3_INTEGER);
-        $update->execute();
-    }
-
-    // مکث 50 میلی‌ثانیه (یعنی هر 1 ثانیه 20 پیام می‌ره)
-    usleep(50000);
-}
-
-// بستن دیتابیس
-$queueDb->close();
-?>

@@ -8,6 +8,7 @@ require_once __DIR__ . '/train_follow_bot.php';
 require_once __DIR__ . '/telegram_delivery.php';
 require_once __DIR__ . '/traveler_list_storage.php';
 require_once __DIR__ . '/notification_diagnostics.php';
+require_once __DIR__ . '/broadcast_queue.php';
 
 // env file loader
 function loadEnv($filePath)
@@ -177,14 +178,7 @@ function initQueueDatabase()
     $db->busyTimeout(5000);
     $db->exec('PRAGMA journal_mode = WAL;');
 
-    // ساخت جدول صف پیام‌ها
-    $db->exec("CREATE TABLE IF NOT EXISTS message_queue (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id TEXT NOT NULL,
-        message TEXT NOT NULL,
-        sent INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+    ensureBroadcastQueueSchema($db);
 
     return $db;
 }
@@ -345,7 +339,9 @@ function fetchTicketsForAllUsers()
 {
     cleanupExpiredTrips();
     $db = initDatabase();
-    $result = $db->query("SELECT * FROM user_trips WHERE follow_mode != 'none' AND chat_id IN (SELECT chat_id FROM users WHERE approved = 1)");
+    $result = $db->query("SELECT t.* FROM user_trips t LEFT JOIN ticket_trip_runs r ON r.trip_id=t.id
+        WHERE t.follow_mode != 'none' AND t.chat_id IN (SELECT chat_id FROM users WHERE approved = 1)
+        ORDER BY COALESCE(r.started_at,0),t.id");
     $trips = [];
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         $trips[] = $row;
@@ -356,7 +352,7 @@ function fetchTicketsForAllUsers()
     $batch = new TicketSearchBatch('requestTicketSearch');
     $footers = [];
     foreach ($trips as $trip) {
-        fetchTickets($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
+        processTicketTripSafely($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
     }
     sendDeferredTicketFooters($footers);
 }
@@ -369,7 +365,7 @@ function processUserTrips($chat_id)
     $batch = new TicketSearchBatch('requestTicketSearch');
     $footers = [];
     foreach ($trips as $trip) {
-        fetchTickets($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
+        processTicketTripSafely($trip, $batch, static function(array $trip) use (&$footers) { $footers[(int)$trip['id']]=$trip; });
     }
     sendDeferredTicketFooters($footers);
 }
@@ -379,8 +375,31 @@ function sendDeferredTicketFooters(array $trips): void
     if (!$trips) { return; }
     $db=initDatabase();
     foreach ($trips as $trip) {
-        if (!isTripExpired($trip['date']) && tripFollowRevisionCurrent($db,$trip)) { sendTrainResultsFooter($trip); }
+        try { if (ticketTripSendAllowed($db,$trip)) { sendTrainResultsFooter($trip); } }
+        catch(Throwable $error){error_log('Ticket footer failed for trip '.(int)$trip['id'].': '.get_class($error));}
     }
+}
+
+function ticketTripSendAllowed(SQLite3 $db,array $trip): bool
+{
+    if(isTripExpired($trip['date'])){return false;}
+    return (bool)followSql($db,"SELECT 1 FROM user_trips t JOIN users u ON u.chat_id=t.chat_id
+        WHERE t.id=:id AND t.chat_id=:chat AND t.follow_revision=:revision AND t.follow_mode!='none' AND u.approved=1",[
+        ':id'=>(int)$trip['id'],':chat'=>(string)$trip['chat_id'],':revision'=>(int)($trip['follow_revision']??0)])->fetchArray(SQLITE3_NUM);
+}
+
+function processTicketTripSafely(array $trip,TicketSearchBatch $batch,?callable $deferFooter=null): void
+{
+    $db=initDatabase();
+    $token=null;
+    try {
+        $token=claimTicketTripRun($db,(int)$trip['id']);if($token===null){return;}
+        fetchTickets($trip,$batch,$deferFooter,$token);
+        completeTicketTripRun($db,(int)$trip['id'],$token);
+    }catch(Throwable $error){
+        error_log('Ticket trip failed for trip '.(int)$trip['id'].': '.get_class($error));
+        try { if($token!==null){completeTicketTripRun($db,(int)$trip['id'],$token,get_class($error));} }catch(Throwable $ignored){}
+    }finally{$db->close();}
 }
 
 function cleanupExpiredTrips(?string $chat_id = null): void
@@ -430,7 +449,7 @@ function requestTicketSearch(array $postFields)
 }
 
 // Keep each user's existing messages, notification flags and reservation buttons.
-function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $deferFooter = null)
+function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $deferFooter = null, ?string $runToken=null)
 {
     // A check can cross midnight after the initial cleanup.
     if (isTripExpired($userTrip['date'])) {
@@ -440,12 +459,13 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
     if (tripFollowMode($userTrip) === 'none') {
         return;
     }
+    $notificationDb = initDatabase();
+    if(!ticketTripSendAllowed($notificationDb,$userTrip)){return;}
     $batch = $batch ?? new TicketSearchBatch('requestTicketSearch');
     $data = $batch->get($userTrip);
     $selectedOnly = tripFollowMode($userTrip) === 'selected';
     $customSelection = in_array(tripFollowMode($userTrip), ['selected', 'except'], true);
     $sentTicketCount = 0;
-    $notificationDb = initDatabase();
     $followAlerts = $selectedOnly ? new TrainFollowAlerts($notificationDb) : null;
     $eligibleCount = $failedCount = $suppressedCount = 0;
     $travelerLists = null;
@@ -456,13 +476,23 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
             $followAlerts->observe($userTrip, $departure);
         }
         if (!empty($departure)) {
+            $attempts=[];$rows=followSql($notificationDb,"SELECT train_key,last_attempt_at FROM telegram_ticket_delivery WHERE trip_id=:id AND kind='ticket'",[':id'=>(int)$userTrip['id']]);
+            while($row=$rows->fetchArray(SQLITE3_ASSOC)){$attempts[$row['train_key']]=(int)$row['last_attempt_at'];}
+            $ordered=[];foreach($departure as$ticket){$ordered[]=['ticket'=>$ticket,'attempt'=>$attempts[trainFollowKey($ticket)]??0,'index'=>count($ordered)];}
+            usort($ordered,static fn($a,$b)=>($a['attempt']<=>$b['attempt'])?:($a['index']<=>$b['index']));
+            $departure=array_column($ordered,'ticket');
             $found = false;
             foreach ($departure as $ticket) {
+                if($runToken!==null){
+                    followSql($notificationDb,'UPDATE ticket_trip_runs SET claimed_at=:now WHERE trip_id=:id AND claim_token=:token',[
+                        ':now'=>time(),':id'=>(int)$userTrip['id'],':token'=>$runToken]);
+                    if($notificationDb->changes()!==1){return;}
+                }
                 $route_title = "{$ticket['from_title']} به {$ticket['to_title']}";
                 if (ticketIsFollowed($ticket, $userTrip) && ticketMatchesCapacity($ticket, $userTrip) && ticketMatchesLocalFilters($ticket, $userTrip)) {
                     $found = true;
                     $eligibleCount++;
-                    if (!tripFollowRevisionCurrent($notificationDb, $userTrip)) {
+                    if (!ticketTripSendAllowed($notificationDb, $userTrip)) {
                         continue;
                     }
                     $claim = $followAlerts !== null ? $followAlerts->claim($userTrip, trainFollowKey($ticket)) : null;
@@ -546,7 +576,7 @@ function fetchTickets($userTrip, ?TicketSearchBatch $batch = null, ?callable $de
         if ($sent) { updateTripNotificationFlags($notificationDb, (int)$userTrip['id'], ['bad_data_notif'=>1]); }
     }
     recordTicketPoll($notificationDb, $userTrip, $departure !== null, $eligibleCount, $sentTicketCount, $failedCount, $suppressedCount);
-    if ($sentTicketCount > 0 && tripFollowRevisionCurrent($notificationDb, $userTrip)) {
+    if ($sentTicketCount > 0 && ticketTripSendAllowed($notificationDb, $userTrip)) {
         if ($deferFooter !== null) { $deferFooter($userTrip); }
         else { sendTrainResultsFooter($userTrip); }
     }
@@ -596,7 +626,7 @@ function toEnglishNumbers($string)
 }
 
 
-function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $parseMode = 'Markdown', array $context = [])
+function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $parseMode = 'Markdown', array $context = [], ?array &$outcome = null)
 {
     $botToken = $GLOBALS['botToken'];
     $url = "https://api.telegram.org/bot$botToken/sendMessage";
@@ -628,7 +658,7 @@ function sendMessage($chat_id, $text, $replyMarkup = null, $isPersian = true, $p
             return $result;
         });
     }
-    return $sender->send($postData, $context);
+    $sent=$sender->send($postData, $context);$outcome=$sender->lastOutcome();return $sent;
 }
 
 
@@ -775,6 +805,10 @@ if (isset($update['message']['web_app_data'])) {
                 setUserState($chat_id, 'GET_BROADCASTMESSAGE');
             }
             break;
+        case '/broadcast_status':
+        case 'وضعیت ارسال همگانی':
+            if($chat_id==$adminChatId){setUserState($chat_id,'BROADCAST_STATUS');}
+            break;
         default:
             if (!$userState || !isset($userState['current_state'])) {
                 sendMessage($chat_id, "دوست خوبم🌹\nبیا بازیگوشی نکنیم و از گزینه‌های قرار داده شده استفاده کنیم😁", getMainMenuKeyboard($chat_id));
@@ -888,9 +922,12 @@ if (isset($update['message']['web_app_data'])) {
                 // handleSetPrivateInfo($chat_id, $text);
                 break;
             case 'SEND_BROADCAST_MESSAGE':
-                broadcastMessage($text, $adminChatId);
+                broadcastMessage($update['message']['text'], $chat_id,
+                    isset($update['update_id'])?'update:'.$update['update_id']:(isset($update['message']['message_id'])?'message:'.$chat_id.':'.$update['message']['message_id']:null));
                 clearUserState($chat_id);
                 break;
+            case 'BROADCAST_STATUS':
+                showBroadcastStatus($chat_id);clearUserState($chat_id);break;
             case 'GET_BROADCASTMESSAGE':
                 if ($chat_id == $adminChatId) {
                     sendMessage($adminChatId, "لطفاً پیام مورد نظر برای ارسال همگانی را وارد کنید:");
@@ -2648,7 +2685,7 @@ function getMainMenuKeyboard($chat_id)
 
     // اگر کاربر ادمین است دکمه ارسال پیام همگانی اضافه می‌شود
     if ($chat_id == $GLOBALS['adminChatId']) {
-        $keyboard[] = [['text' => 'ارسال پیام همگانی']];
+        $keyboard[] = [['text' => 'ارسال پیام همگانی'],['text'=>'وضعیت ارسال همگانی']];
     }
 
     return [
@@ -2887,37 +2924,31 @@ function getAvailableRoutesFromJson($jsonPath)
 }
 
 // تابع ارسال پیام به همه کاربرهای تأیید شده
-function broadcastMessage($message, $chat_id)
+function broadcastMessage($message, $chat_id, ?string $requestKey=null)
 {
-    if ($chat_id == $GLOBALS['adminChatId']) {
-        // اتصال به دیتابیس اصلی برای گرفتن کاربران تایید شده
-        $db = initDatabase();
-
-        // دریافت chat_id های تایید شده
-        $stmt = $db->query("SELECT chat_id FROM users WHERE approved = 1");
-
-        // اتصال به دیتابیس صف پیام‌ها
-        $queueDb = initQueueDatabase();  // اتصال به دیتابیس جدید
-        while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
-            $chatId = $row['chat_id'];
-
-            // درج پیام‌ها به جدول صف در دیتابیس جدید
-            $insert = $queueDb->prepare("INSERT INTO message_queue (chat_id, message, sent) VALUES (:chat_id, :message, 0)");
-            $insert->bindValue(':chat_id', $chatId, SQLITE3_TEXT);  // تغییر نوع به SQLITE3_TEXT چون chat_id یک رشته است
-            $insert->bindValue(':message', $message, SQLITE3_TEXT);
-            $insert->execute();
-        }
-
-        // بستن دیتابیس‌ها
-        $db->close();
-        $queueDb->close();
-
-        // پیام تایید به ادمین
-        sendMessage($chat_id, "پیام‌ها در صف ارسال قرار گرفتند و به مرور ارسال خواهند شد.");
+    if ($chat_id != $GLOBALS['adminChatId']) { return null; }
+    try {
+        $queue=new BroadcastQueue(initQueueDatabase());
+        $result=$queue->enqueue((string)$message,getApprovedUsers(),$requestKey);
+        sendMessage($chat_id,'ارسال همگانی شمارهٔ '.$result['id'].' برای '.$result['recipients'].' کاربر در صف ثبت شد. نتیجه را از «وضعیت ارسال همگانی» ببین.',null,true,null);
+        return $result;
+    }catch(Throwable $error){
+        error_log('Broadcast enqueue failed: '.get_class($error));
+        sendMessage($chat_id,'ثبت ارسال همگانی انجام نشد؛ دوباره تلاش کن.',null,true,null);
+        return null;
     }
 }
 
-
+function showBroadcastStatus($chatId): void
+{
+    if($chatId!=$GLOBALS['adminChatId']){return;}
+    $queue=new BroadcastQueue(initQueueDatabase());$summary=$queue->latestSummary();
+    $backlog=$queue->backlogSummary();
+    $message=$summary?'ارسال همگانی شمارهٔ '.$summary['id']."\nگیرنده‌ها: ".$summary['recipient_count']."\nتحویل به تلگرام: ".$summary['sent']."\nدر انتظار یا تلاش مجدد: ".$summary['pending']."\nارسال ناممکن: ".$summary['failed']."\nتوقف به دلیل لغو تأیید کاربر: ".$summary['skipped']:'هنوز ارسال همگانی جدیدی ثبت نشده است.';
+    foreach($summary['errors']??[]as$error){$message.="\nخطای ".$error['error_code'].': '.$error['recipients'].' گیرنده';}
+    $message.="\nکل صف، شامل پیام‌های قدیمی: ".$backlog['pending'].' پیام در انتظار و '.$backlog['failed'].' پیام ناموفق';
+    sendMessage($chatId,$message,null,true,null);
+}
 
 function translateRoute($route)
 {

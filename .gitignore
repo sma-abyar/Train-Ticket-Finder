@@ -6,3 +6,7 @@ ticket-worker-health.php
 .worker-health-*.php
 ticket-cron-probe-result.php
 .cron-probe-*.php
+message-queue.lock
+*.db
+*.db-wal
+*.db-shm

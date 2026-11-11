@@ -64,6 +64,24 @@ $tests['Telegram failures do not masquerade as acceptance and blocked chats do n
     expect($invalid->send(['chat_id'=>'101','text'=>'invalid']),false);
 };
 
+$tests['Telegram flood cooldown is shared across recipients and sender processes']=static function(){
+    $calls=0;
+    [$sender,$db,$trip,$clock]=deliveryFixture(static function()use(&$calls){$calls++;return ['http'=>429,'data'=>['error_code'=>429,'parameters'=>['retry_after'=>30]]];});
+    expect($sender->send(['chat_id'=>'101','text'=>'a']),false);expect($sender->lastOutcome()['retry_after'],30);
+    $other=new TelegramMessageSender($db,static function()use(&$calls){$calls++;return ['http'=>200,'data'=>['ok'=>true]];},static fn()=>$clock->now,static fn()=>null,static fn()=>null);
+    expect($other->send(['chat_id'=>'202','text'=>'b']),false);expect($calls,1);
+    $clock->now+=31;expect($other->send(['chat_id'=>'202','text'=>'b']),true);expect($calls,2);
+};
+
+$tests['ticket trip leases exclude concurrent manual checks and recover abandoned runs']=static function(){
+    [$sender,$db,$trip]=deliveryFixture(static fn()=>['http'=>200,'data'=>['ok'=>true]]);
+    $first=claimTicketTripRun($db,(int)$trip['id'],1000);expect(is_string($first),true);
+    expect(claimTicketTripRun($db,(int)$trip['id'],1001),null);
+    $second=claimTicketTripRun($db,(int)$trip['id'],1301);expect(is_string($second),true);
+    completeTicketTripRun($db,(int)$trip['id'],$first);expect($db->querySingle('SELECT claim_token FROM ticket_trip_runs'),$second);
+    completeTicketTripRun($db,(int)$trip['id'],$second);expect($db->querySingle('SELECT claim_token FROM ticket_trip_runs'),null);
+};
+
 $tests['long and underscored reservation IDs use short owned callback tokens'] = static function(){
     [$db]=followFixture();ensureTelegramDeliveryTables($db);
     foreach ([str_repeat('A',110),'ticket_with_underscores'] as $ticket){
