@@ -10,6 +10,7 @@
   let alertsReturn='trips', draftFields={};
   let hasShownView=false;
   const motion=window.TrainMotion;
+  let people=null;
   const modalIds=['delete-dialog','time-dialog','date-dialog','city-dialog'];
   let clockSide='from',clockDraft={from:'00:00',to:'24:00'},clockOpener='open-time-from',savingLabel=null;
   const draftFieldIds=['time-from','time-to','min-price','max-price','companies'];
@@ -62,8 +63,8 @@
   }
   function fillDraftFields(){fillFields(draft);for(const [id,value] of Object.entries(draftFields))$(id).value=value;renderTimeFields();}
   function syncBack(){
-    const label=view==='create'&&!editTrip&&step>1?'مرحلهٔ قبل':'بازگشت به سفرها';
-    $('page-navigation').hidden=!boot||!['create','success'].includes(view);
+    const label=view==='people'?(people?.getBackLabel()||'بازگشت به سفرها'):view==='create'&&!editTrip&&step>1?'مرحلهٔ قبل':'بازگشت به سفرها';
+    $('page-navigation').hidden=!boot||!['create','success','people'].includes(view);
     $('page-back-label').textContent=label;$('back').textContent=label;$('back').hidden=false;
     $('alerts-back').textContent=alertsReturn==='success'?'بازگشت به نتیجهٔ ثبت':'بازگشت به سفرها';
     const hasDialog=modalIds.some(id=>$(id).open);
@@ -83,21 +84,23 @@
     const dialog=modalIds.find(id=>$(id).open);
     if(dialog){closeDialog(dialog);return;}
     if(view==='alerts'&&!$('notification-report').hidden){closeDiagnostics();return;}
+    if(view==='people'){if(!people?.back())showView('trips');return;}
     if(view==='create'&&!editTrip&&step>1){if(step===2)rememberDraftFields();setStep(step-1);return;}
     if(view==='alerts'){showView(alertsReturn);return;}
     if(view==='create'||view==='success')showView('trips');
   }
-  function markClose(){if(tg?.enableClosingConfirmation){alertDirty||preferencesDirty?tg.enableClosingConfirmation():tg.disableClosingConfirmation();}}
+  function markClose(){if(tg?.enableClosingConfirmation){alertDirty||preferencesDirty||people?.isDirty()?tg.enableClosingConfirmation():tg.disableClosingConfirmation();}}
   function mayLeave(){return !alertDirty||window.confirm('ثبت تغییر آخر تأیید نشده است. خارج می‌شوی؟');}
   function showView(next,section=next){
     if(busy)return false;if(view==='alerts'&&next!=='alerts'&&!mayLeave())return false;
+    if(view==='people'&&next!=='people'&&people&&!people.canLeave())return false;
     if(view==='create'&&editTrip&&preferencesDirty&&!window.confirm('ترجیحات سفر ذخیره نشده است. بدون ذخیره خارج می‌شوی؟'))return false;
     if(view==='create'&&next!=='create'&&!editTrip&&step===2)rememberDraftFields();
     if(view==='create'&&next!=='create')editTrip=null;
     const previousView=view;
     preferencesDirty=false;
     alertDirty=false;pendingAlertOperation=null;alertSaveStatus='saved';markClose();view=next;document.documentElement.dataset.view=next;notice('');
-    ['create','trips','alerts','success'].forEach(v=>$(v+'-view').hidden=v!==next);
+    ['create','trips','alerts','success','people'].forEach(v=>$(v+'-view').hidden=v!==next);
     const activeSection=section==='success'?'create':section;
     document.querySelectorAll('[data-nav]').forEach(b=>{b.classList.toggle('active',b.dataset.nav===activeSection);b.setAttribute('aria-current',b.dataset.nav===activeSection?'page':'false');});
     motion?.sync();if(hasShownView&&previousView!==next){motion?.enter($(next+'-view'),next==='trips');if(next==='success')motion?.pulse(document.querySelector('.success-mark'));}hasShownView=true;
@@ -200,6 +203,7 @@
     if(filters.departure_from)rows.push(['ساعت حرکت',fa(filters.departure_from)+' تا '+fa(filters.departure_to)]);if(filters.min_price!==undefined||filters.max_price!==undefined)rows.push(['قیمت · تومان',`${filters.min_price===undefined?'۰':fa(filters.min_price)} تا ${filters.max_price===undefined?'نامحدود':fa(filters.max_price)}`]);if(filters.train_types?.length)rows.push(['نوع قطار',filters.train_types.map(t=>({compartment_4:'۴ نفره',compartment_6:'۶ نفره',seated:'سالنی'}[t])).join('، ')]);if(filters.companies?.length)rows.push(['شرکت',filters.companies.join('، ')]);
     $('review-route').textContent=routeText();$('review-details').replaceChildren();rows.forEach(([a,b])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=a;dd.textContent=b;$('review-details').append(dt,dd);});}
   function freshCreate(){if(!showView('create'))return;editTrip=null;fillDraftFields();renderStations();setStep(1);}
+  async function openPeople(section='travelers'){if(!people){notice('فایل‌های مینی‌اپ کامل بارگذاری نشدند؛ صفحه را دوباره باز کن.',true);return;}if(view==='people'&&!people.canLeave())return;if(showView('people'))await people.open(section);}
   function renderTrips(){const list=$('trip-list');list.replaceChildren();$('approval').hidden=boot.approved;
     if(!boot.trips.length){const p=document.createElement('p');p.className='empty';p.textContent='هنوز سفری ثبت نکرده‌ای. مسیر بعدی را انتخاب کن تا بلیطش را پیدا کنیم.';list.append(p);return;}
     boot.trips.forEach(trip=>{const card=document.createElement('article');card.className='trip-card';const top=document.createElement('div');top.className='trip-top';const title=document.createElement('h2');title.textContent=routeText(trip);const pill=document.createElement('span');pill.className='pill'+(trip.mode==='none'?' off':'');pill.textContent=modeLabel(trip);top.append(title,pill);
@@ -475,15 +479,16 @@
   ['all','on','stock'].forEach(key=>$('filter-'+key).onclick=()=>{if(!catalog||busy)return;trainFilter=key;renderTrains();});
   $('notification-diagnostics').onclick=showNotificationDiagnostics;
   document.querySelectorAll('[name=alert-mode]').forEach(input=>input.onchange=()=>{if(busy)return;return persistAlertChange({kind:'mode',mode:input.value});});
-  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{if(!boot||busy)return;const next=b.dataset.nav;if(next==='create')freshCreate();else if(next==='alerts'){if(!boot.trips.length){showView('trips','alerts');notice('اول یک سفر ثبت کن؛ بعد قطارهایش را انتخاب کن.');}else{showView('trips','alerts');notice('سفر موردنظر را برای تنظیم هشدار انتخاب کن.');}}else showView(next);});
+  document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{if(!boot||busy)return;const next=b.dataset.nav;if(next==='create')freshCreate();else if(next==='people')return openPeople();else if(next==='alerts'){if(!boot.trips.length){showView('trips','alerts');notice('اول یک سفر ثبت کن؛ بعد قطارهایش را انتخاب کن.');}else{showView('trips','alerts');notice('سفر موردنظر را برای تنظیم هشدار انتخاب کن.');}}else showView(next);});
   document.querySelector('.brand-mark').onclick=e=>{e.preventDefault();if(boot)freshCreate();};
-  window.addEventListener('beforeunload',e=>{if(alertDirty||preferencesDirty){e.preventDefault();e.returnValue='';}});
+  window.addEventListener('beforeunload',e=>{if(alertDirty||preferencesDirty||people?.isDirty()){e.preventDefault();e.returnValue='';}});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&boot)syncToday();});
   $('retry-start').onclick=init;
+  people=window.TrainPeople?.create({api,notice,setWorking:value=>setBusy(value,'people'),onChange:()=>{syncBack();markClose();}})||null;
   async function init(){tg?.ready();tg?.expand();$('retry-start').hidden=true;$('loading').hidden=false;$('main').hidden=true;$('bottom-navigation').hidden=true;notice('');try{
     if(!tg?.initData)throw new Error('این صفحه را از دکمهٔ «ثبت سفر» یا «سفرهای من» داخل ربات تلگرام باز کن تا ورودت تأیید شود.');
     boot=await api('bootstrap');bootAt=Date.now();todayDate=new Date(boot.today+'T12:00:00Z');today=C.key(C.parts(todayDate));restore();[year,month]=(draft.date||today).split('-').map(Number);renderStations();renderQuick();renderCalendar();fillDraftFields();renderTrips();setStep(1);$('main').hidden=false;$('bottom-navigation').hidden=false;$('loading').hidden=true;
-    const params=new URLSearchParams(location.search),id=Number(params.get('trip_id'));if(id>0&&Number.isSafeInteger(id))await openAlerts(id);else if(params.get('view')==='trips'||params.get('view')==='alerts')showView('trips',params.get('view'));else showView('create');
+    const params=new URLSearchParams(location.search),id=Number(params.get('trip_id'));if(params.get('view')==='people')await openPeople(params.get('section')||'travelers');else if(id>0&&Number.isSafeInteger(id))await openAlerts(id);else if(params.get('view')==='trips'||params.get('view')==='alerts')showView('trips',params.get('view'));else showView('create');
   }catch(error){$('loading').hidden=true;$('retry-start').hidden=!tg?.initData;notice(error.message,true);}}
   init();
 })();

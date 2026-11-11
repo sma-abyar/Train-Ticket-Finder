@@ -84,6 +84,36 @@ function followMiniAppUrl(int $tripId): ?string
     return trainMiniAppUrl('alerts', $tripId);
 }
 
+function sendPassengerMiniAppEntry($chatId, string $section='travelers'): bool
+{
+    $url=trainMiniAppUrl('people');if($url===null)return false;
+    $url.='&section='.rawurlencode($section);
+    sendMessage($chatId,'مسافران و لیست‌ها را یک‌جا مدیریت کن. اطلاعات قبلی‌ات هم در همین بخش در دسترس است.',
+        ['inline_keyboard'=>[[['text'=>$section==='lists'||$section==='new_list'?'لیست‌های مسافران':'مدیریت مسافران','web_app'=>['url'=>$url]]]]],true,null);
+    return true;
+}
+
+function ticketListPickerCallback(SQLite3 $db, array $trip, array $ticket): string
+{
+    $token=substr(hash('sha256',json_encode(['list-picker',(string)$trip['chat_id'],(string)$ticket['id'],(int)$trip['coupe']],JSON_THROW_ON_ERROR)),0,32);
+    $departure=tripDepartureDate($trip['date']);$expires=max(time()+86400,$departure?$departure->getTimestamp()+86400:0);
+    followSql($db,'INSERT INTO ticket_reservation_callbacks(token,chat_id,list_id,ticket_id,coupe,expires_at)VALUES(:token,:chat,0,:ticket,:coupe,:expires)
+        ON CONFLICT(token) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at)',[
+        ':token'=>$token,':chat'=>(string)$trip['chat_id'],':ticket'=>(string)$ticket['id'],':coupe'=>(int)$trip['coupe'],':expires'=>$expires]);
+    return 'ticket_lists_'.$token;
+}
+
+function showCurrentTicketLists($chatId, string $token): void
+{
+    $context=resolveTicketReservation(initDatabase(),(string)$chatId,'reserve_token_'.$token);
+    if(!$context||(int)$context['list_id']!==0){sendMessage($chatId,'دکمهٔ انتخاب لیست منقضی شده یا برای این حساب نیست. از پیام بلیط خودت اقدام کن.',null,true,null);return;}
+    $db=initDatabase();$rows=[];
+    foreach(listTravelerLists($chatId)as$list){if($list['member_count']<1)continue;$callback=ticketReservationCallback($db,(string)$chatId,(int)$list['id'],$context['ticket_id'],(int)$context['coupe']);$rows[]=[['text'=>'رزرو برای '.$list['name'].' ('.$list['member_count'].' نفر)','callback_data'=>$callback]];}
+    $url=trainMiniAppUrl('people');$rows[]=$url?[['text'=>'مدیریت مسافران و لیست‌ها','web_app'=>['url'=>$url.'&section=lists']]]:[['text'=>'ساخت لیست مسافران','callback_data'=>'add_traveler_list']];
+    $rows[]=[['text'=>'دوباره خواندن لیست‌های رزرو','callback_data'=>'ticket_lists_'.$token]];
+    sendMessage($chatId,'لیست‌های فعلی برای رزرو همین بلیط. پس از ساخت یا ویرایش لیست در مینی‌اپ، دکمهٔ دوباره‌خواندن را بزن. ظرفیت نهایی هنگام رزرو بررسی می‌شود.',['inline_keyboard'=>$rows],true,null);
+}
+
 function trainTripManagementKeyboard(int $tripId): array
 {
     return ['inline_keyboard'=>[

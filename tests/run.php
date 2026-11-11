@@ -349,6 +349,7 @@ require __DIR__ . '/train_follows_test.php';
 require __DIR__ . '/miniapp_test.php';
 require __DIR__ . '/telegram_delivery_test.php';
 require __DIR__ . '/traveler_list_storage_test.php';
+require __DIR__ . '/passenger_app_test.php';
 require __DIR__ . '/cron_runtime_test.php';
 require __DIR__ . '/broadcast_queue_test.php';
 

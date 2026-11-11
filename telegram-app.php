@@ -26,7 +26,10 @@ try {
     $chat = telegramWebAppUser($body['init_data'], $GLOBALS['botToken']);
     $db = initDatabase();
     $action = $body['action'] ?? 'bootstrap';
-    if ($action === 'bootstrap') {
+    if (is_string($action) && str_starts_with($action,'people_')) {
+        require_once __DIR__.'/passenger_app.php';
+        $data=$action==='people_load'?peopleSnapshot($db,$chat):peopleMutation($db,$chat,$action,$body);
+    } elseif ($action === 'bootstrap') {
         $rows = followSql($db, 'SELECT * FROM user_trips WHERE chat_id=:chat ORDER BY id DESC', [':chat'=>$chat]);
         $trips = [];
         while ($row = $rows->fetchArray(SQLITE3_ASSOC)) { if (!isTripExpired($row['date'])) { $trips[] = miniAppTrip($row); } }

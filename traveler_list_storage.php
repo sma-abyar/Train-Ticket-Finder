@@ -1,5 +1,14 @@
 <?php
 
+/** SQLite's legacy INTEGER phone column can discard the leading zero. */
+function bookingMobileNumber(string $phone): string
+{
+    $phone=trim($phone);
+    if(preg_match('/^9\d{9}$/D',$phone))return '0'.$phone;
+    if(preg_match('/^(?:\+98|0098|98)(9\d{9})$/D',$phone,$match))return '0'.$match[1];
+    return $phone;
+}
+
 /** Read both historical list formats without changing stored passenger data. */
 function travelerListsHaveJsonMembers(SQLite3 $db): bool
 {

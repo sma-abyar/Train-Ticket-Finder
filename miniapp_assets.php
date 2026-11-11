@@ -9,6 +9,7 @@ function serveMiniAppAsset(): bool
         'app'=>['telegram-app.js','text/javascript; charset=utf-8'],
         'calendar'=>['miniapp-calendar.js','text/javascript; charset=utf-8'],
         'motion'=>['miniapp-motion.js','text/javascript; charset=utf-8'],
+        'people'=>['miniapp-people.js','text/javascript; charset=utf-8'],
         'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2'],
     ];
     $name = $_GET['asset'];

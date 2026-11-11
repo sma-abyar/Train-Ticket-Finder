@@ -19,6 +19,7 @@
       ['train-filters', '[aria-pressed="true"]'], ['bottom-navigation', '[aria-current="page"]'],
       ['trip-steps', '[aria-current="step"]'],
       ['time-endpoints', '[aria-pressed="true"]'],
+      ['people-tabs','[aria-pressed="true"]'],['person-age-choices','input:checked',true],['person-gender-choices','input:checked',true],
     ];
     const groups = specs.map(([id, selector, label]) => {
       const group = doc.getElementById(id);

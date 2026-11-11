@@ -779,10 +779,12 @@ if (isset($update['message']['web_app_data'])) {
             setUserState($chat_id, 'SHOW_TRAVELER_LISTS');
             break;
         case 'حذف مسافر':
+            if(sendPassengerMiniAppEntry($chat_id,'travelers')){clearUserState($chat_id);break;}
             setUserState($chat_id, 'REMOVE_TRAVELER');
             sendMessage($chat_id, "لطفاً شماره مسافر را برای حذف وارد کنید (مثال: 1):");
             break;
         case 'حذف لیست':
+            if(sendPassengerMiniAppEntry($chat_id,'lists')){clearUserState($chat_id);break;}
             setUserState($chat_id, 'REMOVE_LIST_OF_TRAVELER');
             sendMessage($chat_id, "لطفاً شماره لیست را برای حذف وارد کنید (مثال: 1):");
             break;
@@ -793,6 +795,7 @@ if (isset($update['message']['web_app_data'])) {
             sendMessage($chat_id, "لطفاً شماره سفر را برای حذف وارد کنید (مثال: 1):");
             break;
         case 'اطلاعات شخصی':
+            if(sendPassengerMiniAppEntry($chat_id,'contact')){clearUserState($chat_id);break;}
             setUserState($chat_id, 'SET_PRIVATE_INFO');
             // clearUserState($chat_id);
             // showPrivateInfo($chat_id);
@@ -1050,6 +1053,10 @@ function handleCallbackQuery($callback_query)
     $chat_id = $callback_query['message']['chat']['id'];
     $data = $callback_query['data'];
     $message_id = $callback_query['message']['message_id'];
+    if(preg_match('/^ticket_lists_([a-f0-9]{32})$/D',$data,$match)){
+        if(isset($callback_query['id']))answerCallbackQuery($callback_query['id'],'در حال خواندن لیست‌ها');
+        showCurrentTicketLists($chat_id,$match[1]);return;
+    }
     // file_put_contents('debug.log', "Callback Query received: " . print_r($callback_query, true) . "\n", FILE_APPEND);
 
     if ($data === 'add_traveler') {
@@ -1503,6 +1510,7 @@ function handleSetTripFilter($chat_id, $text)
 
 function handleAddTravelerCommand($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'new_traveler')){clearUserState($chat_id);return;}
     setUserState($chat_id, 'SET_TRAVELER_FIRST_NAME');
     sendMessage($chat_id, "لطفاً نام مسافر (نام کوچک) را وارد کنید:");
 }
@@ -1623,6 +1631,7 @@ function handleSetTravelerWheelchair($chat_id, $text)
 
 function handleAddTravelerListCommand($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'new_list')){clearUserState($chat_id);return;}
     setUserState($chat_id, 'SET_TRAVELER_LIST_NAME');
     sendMessage($chat_id, "لطفاً نام لیست مسافران را وارد کنید:");
 }
@@ -1652,6 +1661,7 @@ function handleSetTravelerListMembers($chat_id, $text)
 
 function handleShowTravelersCommand($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'travelers')){clearUserState($chat_id);return;}
     $travelers = listTravelers($chat_id);
 
     // Initialize the inline keyboard with the "افزودن مسافر" button
@@ -1687,6 +1697,7 @@ function handleShowTravelersCommand($chat_id)
 }
 function handleShowTravelerListsCommand($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'lists')){clearUserState($chat_id);return;}
     $lists = listTravelerLists($chat_id);
 
     // Initialize the inline keyboard with the "افزودن لیست مسافر" button
@@ -2295,7 +2306,7 @@ function makeReservation($ticketId, $passengers, $user, $coupe)
         'user' => [
             'fullName' => $user['fullName'],
             'email' => $user['email'],
-            'mobileNumber' => '0' . $user['mobileNumber']
+            'mobileNumber' => bookingMobileNumber((string)$user['mobileNumber'])
         ],
         'coupe' => $coupe,
         'safarmarketId' => ''
@@ -2335,6 +2346,8 @@ function modifyTicketMessage($message, $userTrip, $ticket, $lists)
     $keyboard[] = [['text'=>'دیگه این قطار رو نمی‌خوام',
         'callback_data'=>'train_mute_' . $userTrip['id'] . '_' . substr(trainFollowKey($ticket), 0, 24)]];
     $keyboard[] = [['text'=>'فیلترهای این سفر', 'callback_data'=>'trip_settings_' . $userTrip['id']]];
+    $callbackDb=initDatabase();
+    $keyboard[]=[['text'=>'انتخاب یا به‌روزرسانی لیست رزرو','callback_data'=>ticketListPickerCallback($callbackDb,$userTrip,$ticket)]];
 
     // اضافه کردن دکمه برای هر لیست
     foreach ($lists as $list) {
@@ -2781,12 +2794,14 @@ function addTravelerToList($chat_id, $list_id, $traveler_id)
 
 function startAddingPrivateInfo($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'contact')){clearUserState($chat_id);return;}
     setUserState($chat_id, 'awaiting_name');
     sendMessage($chat_id, "📝 لطفاً نام و نام خانوادگی خود را وارد کنید:");
 }
 
 function startEditingPrivateInfo($chat_id)
 {
+    if(sendPassengerMiniAppEntry($chat_id,'contact')){clearUserState($chat_id);return;}
     $db = initDatabase();
     $stmt = $db->prepare("SELECT person_name, phone_number, email FROM private_info WHERE chat_id = :chat_id");
     $stmt->bindValue(':chat_id', $chat_id, SQLITE3_TEXT);
@@ -2823,7 +2838,7 @@ function getPrivateInfo($chat_id)
     return [
         'fullName' => isset($userData['person_name']) ? $userData['person_name'] : '',
         'email' => isset($userData['email']) ? $userData['email'] : '',
-        'mobileNumber' => isset($userData['phone_number']) ? $userData['phone_number'] : ''
+        'mobileNumber' => bookingMobileNumber((string)($userData['phone_number'] ?? ''))
     ];
 }
 

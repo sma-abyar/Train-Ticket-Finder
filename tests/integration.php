@@ -38,7 +38,7 @@ try {
     $base = 'http://' . $address;
     foreach (['check_tickets.php', 'send_queue.php', 'cron_probe.php', 'cron_runtime.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
-        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp-motion.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','broadcast_queue.php','diagnose_notifications.php'] as $file) {
+        'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp-motion.js','miniapp-people.js','passenger_app.php','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','broadcast_queue.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
     }
     mkdir($temp.'/fonts');mkdir($temp.'/fonts/webfonts');
@@ -133,7 +133,7 @@ PHP);
     rename($temp.'/.env',$temp.'/.env.asset-test');
     try {
         verify($publicGet('/telegram-app.css?v=2')[0]===403,'Reproduce static-file denial');
-        foreach(['style'=>['telegram-app.css','text/css'],'app'=>['telegram-app.js','text/javascript'],'calendar'=>['miniapp-calendar.js','text/javascript'],'motion'=>['miniapp-motion.js','text/javascript'],'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2']] as $name=>[$source,$mime]){
+        foreach(['style'=>['telegram-app.css','text/css'],'app'=>['telegram-app.js','text/javascript'],'calendar'=>['miniapp-calendar.js','text/javascript'],'motion'=>['miniapp-motion.js','text/javascript'],'people'=>['miniapp-people.js','text/javascript'],'font'=>['fonts/webfonts/Vazirmatn[wght].woff2','font/woff2']] as $name=>[$source,$mime]){
             [$status,$body,$headers]=$publicGet('/telegram-app.php?asset='.$name.'&v=3');
             verify($status===200 && str_starts_with($headers['content-type']??'',$mime),'UI asset must have the correct MIME type: '.$name);
             verify(hash('sha256',$body)===hash_file('sha256',$temp.'/'.$source),'Asset bytes must match the source: '.$name);
@@ -873,6 +873,50 @@ PHP);
     verify(count($newMessages($before))===0,'Successful help is sent once per trip, even after a worker restart');
     $db=new SQLite3($temp.'/users.db');$db->exec('DELETE FROM user_trips WHERE id='.$hintTripId);
     verify((int)$db->querySingle('SELECT COUNT(*) FROM ticket_trip_hints WHERE trip_id='.$hintTripId)===0,'Deleting a trip also deletes its help delivery state');$db->close();
+    // Exercise the signed address-book API against the real legacy relational DB.
+    $db=new SQLite3($temp.'/users.db');$db->exec("INSERT INTO users(chat_id,approved)VALUES('909',1),('910',1)");$db->close();
+    $peopleCall=static fn(string $action,array $payload=[])=>$app(['init_data'=>$authFor(909),'action'=>$action]+$payload);
+    verify($app(['init_data'=>'fake','action'=>'people_load'])[0]===401,'Identity records require signed Telegram authentication');
+    $person=['first_name'=>'مسافر','last_name'=>'آزمایشی','national_code'=>'۰۰۱۲۳۴۵۶۷۸','passenger_type'=>0,'gender'=>1,'wheelchair'=>true];
+    $createPerson=['request_id'=>str_repeat('p',32),'traveler'=>$person];[$status,$address]=$peopleCall('people_save_traveler',$createPerson);
+    verify($status===200 && $address['data']['travelers'][0]['national_code']==='0012345678','Passenger creation preserves leading zeros and Persian digit input');$personId=$address['data']['mutation']['id'];
+    verify($peopleCall('people_save_traveler',$createPerson)[1]['data']['replayed']===true,'An interrupted passenger create cannot duplicate a record');
+    $person['national_code']='0012345679';$person['passenger_type']=2;$person['first_name']='نوزاد';
+    $infant=$peopleCall('people_save_traveler',['request_id'=>str_repeat('i',32),'traveler'=>$person])[1]['data']['mutation']['id'];
+    $person['national_code']='0099999999';$foreignPerson=$app(['init_data'=>$authFor(910),'action'=>'people_save_traveler','request_id'=>str_repeat('p',32),'traveler'=>$person])[1]['data'];
+    verify($peopleCall('people_delete_traveler',['request_id'=>str_repeat('f',32),'id'=>$foreignPerson['mutation']['id'],'version'=>$foreignPerson['travelers'][0]['version']])[0]===404,'A signed caller still cannot mutate another account passenger');
+    [$status,$address]=$peopleCall('people_save_list',['request_id'=>str_repeat('l',32),'name'=>'هم‌سفرها','member_ids'=>[$personId,$infant]]);$listId=$address['data']['mutation']['id'];
+    verify($status===200 && $address['data']['lists'][0]['seat_count']===1,'Lists created in the Mini App distinguish infants from required seats');
+    verify($peopleCall('people_save_list',['request_id'=>str_repeat('x',32),'name'=>'غیرمجاز','member_ids'=>[$foreignPerson['mutation']['id']]])[0]===400,'Foreign passenger IDs cannot be inserted into a list');
+    $contact=$address['data']['contact'];$address=$peopleCall('people_save_contact',['request_id'=>str_repeat('c',32),'version'=>$contact['version'],'person_name'=>'خریدار آزمایشی','phone_number'=>'+۹۸۹۱۲۳۴۵۶۷۸۹','email'=>''])[1]['data'];
+    verify($address['contact']['phone_number']==='09123456789','Contact updates normalize the legacy INTEGER phone field');
+    file_put_contents($temp.'/people-booking.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+[$script,$list]= $argv;$db=initDatabase();$people=getTravelersFromList((int)$list,'909');
+if(count($people)!==2||!$people[0]['wheelchair']||$people[1]['passenger_type']!==2)throw new RuntimeException('Address book is not available to booking');
+$trip=['chat_id'=>'909','date'=>'1490-01-01','coupe'=>0];$callback=ticketListPickerCallback($db,$trip,['id'=>'ticket-1']);file_put_contents(__DIR__.'/people-picker-callback',$callback);
+$_ENV['MINI_APP_URL']='https://example.test/telegram-app.php';handleShowTravelersCommand('909');handleShowTravelerListsCommand('909');
+saveReservationSession('909',['list_id'=>(int)$list,'ticket_id'=>'ticket-1','coupe'=>0]);completeReservation('909');
+PHP);
+    unlink($temp.'/reservation-failure');$before=count($readRequests());runPhp(array_merge($php,[$temp.'/people-booking.php',(string)$listId]),$temp);
+    $newRequests=array_slice($readRequests(),$before);$reservation=array_values(array_filter($newRequests,static fn($r)=>$r['path']==='/train/reservation/ticket-1/0'));
+    verify(count($reservation)===1 && $reservation[0]['payload']['user']['mobileNumber']==='09123456789','Mini App contact data reach reservation without a duplicated leading zero');
+    verify($reservation[0]['payload']['passengers'][1]['ageType']==='infant' && $reservation[0]['payload']['passengers'][0]['isWheelchairOrdered']===true,'The existing booking flow retains age, gender and wheelchair choices');
+    $launches=$newMessages($before);verify(str_contains($launches[0]['payload']['reply_markup'],'view=people')&&str_contains($launches[1]['payload']['reply_markup'],'section=lists'),'Old bot entry points launch the matching Mini App section');
+    $freshList=$peopleCall('people_save_list',['request_id'=>str_repeat('n',32),'name'=>'لیست تازه','member_ids'=>[$personId]])[1]['data'];$freshListId=$freshList['mutation']['id'];
+    file_put_contents($temp.'/people-picker.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$_ENV['MINI_APP_URL']='https://example.test/telegram-app.php';showCurrentTicketLists($argv[1],substr(file_get_contents(__DIR__.'/people-picker-callback'),strlen('ticket_lists_')));
+PHP);
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/people-picker.php','909']),$temp);$pickerMessages=$newMessages($before);
+    verify(count($pickerMessages)===1 && str_contains($pickerMessages[0]['payload']['reply_markup'],'reserve_list_'.$freshListId.'_ticket-1_0'),'An existing ticket picker discovers a newly created list without waiting for another stock alert');
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/people-picker.php','910']),$temp);verify(!str_contains($newMessages($before)[0]['payload']['reply_markup']??'','reserve_'),'A ticket list picker token is scoped to its chat owner');
+    $current=$peopleCall('people_load')[1]['data'];$owned=array_column($current['travelers'],null,'id')[$personId];
+    $after=$peopleCall('people_delete_traveler',['request_id'=>str_repeat('d',32),'id'=>$personId,'version'=>$owned['version']])[1]['data'];
+    verify(count($after['travelers'])===1 && !in_array($personId,array_merge(...array_column($after['lists'],'member_ids')),true),'Deleting a saved person detaches all owned list memberships');
+    echo "PASS Passenger Mini App: signed ownership, legacy list writes, idempotent create, contacts, infant/wheelchair booking, bot launchers and current-ticket list refresh\n";
     echo "PASS Quiet alerts: normal notifications, one help per trip, independent failure retry and active/abandoned help leases\n";
     echo "PASS Broadcast delivery: all approved recipients, atomic idempotent enqueue, plain raw text, revoked/blocked states, admin progress and no resends\n";
     echo "PASS Trip isolation: a failed trip cannot stop healthy ones and revoked accounts cannot send\n";
