@@ -139,6 +139,16 @@ filters still apply.
 
 New trips created through the setup flow default to **all trains** and start
 checking immediately. Existing subscriptions keep their saved settings on upgrade.
+The Mini App acknowledges saving before starting the first check. It then shows
+the initial result and sends matching tickets to the chat immediately. Successful
+shared inventory up to two minutes old is reused across passenger counts and local
+filters; missing or older inventory is searched once per broad search, with a
+recoverable lease for concurrent registrations. Failed initial searches are shared
+for thirty seconds. Cron continues with fresh searches afterward.
+An identical trip created again by the same user reuses the existing subscription
+and preserves its alert choices. Retrying the first check returns its recorded
+outcome without repeating accepted ticket messages. Unapproved users receive an
+explanation without triggering searches or delivery.
 Clearing the selected list pauses alerts; it never falls back to all trains.
 All enabled modes notify on availability or sufficient-capacity transitions;
 unchanged inventory does not generate repeated alerts. Each new alert uses a
@@ -180,7 +190,8 @@ type, require selecting the new service.
 The full catalog is stored once per broad search, independently of each user's
 display filters. Opening a populated picker reuses this catalog. A cold picker
 or explicit refresh can fetch it; refreshes reuse snapshots younger than 30
-seconds. These snapshots are for selection only: scheduled monitoring always
+seconds. These snapshots also serve initial checks when at most two minutes old;
+scheduled monitoring always
 uses fresh API responses and never alerts from the catalog cache. Catalogs not
 updated for seven days are removed. Paused trips do not generate ticket searches.
 

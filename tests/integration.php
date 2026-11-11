@@ -8,6 +8,7 @@ mkdir($temp);
 $php = [PHP_BINARY, '-n', '-d', 'extension_dir=' . ini_get('extension_dir'),
     '-d', 'extension=sqlite3', '-d', 'extension=curl'];
 $server = null;
+$appServer = null;
 
 function verify(bool $condition, string $message): void
 {
@@ -377,8 +378,19 @@ PHP);
         $fields['hash'] = hash_hmac('sha256', implode("\n", $check), hash_hmac('sha256','TEST','WebAppData',true));
         return http_build_query($fields);
     };
-    $api = static function (array $body, string $entry = 'telegram-alerts.php') use ($base): array {
-        $curl = curl_init($base . '/' . $entry . '?api=1');
+    // Keep the app server separate so real outbound cURL can reach the mock API.
+    $socket=stream_socket_server('tcp://127.0.0.1:0',$errorCode,$errorMessage);
+    $appAddress=stream_socket_get_name($socket,false);fclose($socket);$appBase='http://'.$appAddress;
+    $appServer=proc_open(array_merge($php,['-S',$appAddress,$temp.'/router.php']),
+        [0=>['pipe','r'],1=>['file',$temp.'/app-server.log','a'],2=>['file',$temp.'/app-server.log','a']],$appPipes,$temp);
+    fclose($appPipes[0]);[$appHost,$appPort]=explode(':',$appAddress);$ready=false;
+    for($attempt=0;$attempt<50;$attempt++){
+        $probe=@fsockopen($appHost,(int)$appPort,$errorCode,$errorMessage,0.1);
+        if($probe){fclose($probe);$ready=true;break;}usleep(100000);
+    }
+    verify($ready,'App test server did not start');
+    $api = static function (array $body, string $entry = 'telegram-alerts.php') use ($appBase): array {
+        $curl = curl_init($appBase . '/' . $entry . '?api=1');
         curl_setopt_array($curl, [CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($body),CURLOPT_HTTPHEADER=>['Content-Type: application/json'],
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>8]);
         $response = curl_exec($curl);
@@ -501,8 +513,33 @@ PHP);
     $before=count($readRequests());
     [$status,$new] = $app($create);
     verify($status===200 && $new['data']['created']===true && $new['data']['trip']['mode']==='all','Complete creation defaults to all trains');
-    verify(count($readRequests())===$before,'Creation does not wait for upstream inventory or send unsolicited bot messages');
+    verify(count($readRequests())===$before,'Creation is acknowledged without waiting for the initial search');
     $id=$new['data']['trip']['id'];
+    $initial=['init_data'=>$auth,'action'=>'initial_check','trip_id'=>$id];
+    [$status,$checked]=$app($initial);
+    verify($status===200 && $checked['data']['state']==='ready' && $checked['data']['source']==='live' && $checked['data']['sent_count']===3,'A new trip immediately searches missing inventory and sends matching tickets');
+    $sent=$newMessages($before);
+    verify(count($sent)===4 && count(array_filter($sent,static fn($r)=>str_contains($r['payload']['text'],'بلیط موجود است')))===3,'Initial results include per-ticket reservation/mute controls and one management hint');
+    $before=count($readRequests());
+    verify($app($initial)[1]['data']['source']==='history','Ambiguous first-check retries reuse the recorded outcome');
+    verify(count($readRequests())===$before,'An initial-check retry does not search or resend accepted tickets');
+    $foreignInitial=$initial;$foreignInitial['init_data']=$authFor(202);
+    verify($app($foreignInitial)[0]===404,'Initial results are scoped to the signed trip owner');
+    $duplicate=$create;$duplicate['request_id']=str_repeat('z',32);
+    [$status,$same]=$app($duplicate);
+    verify($status===200 && !$same['data']['created'] && $same['data']['trip']['id']===$id,'A new request key cannot create the same subscription twice');
+    $shared=$create;$shared['request_id']=str_repeat('s',32);$shared['trip']['count']=3;
+    $sharedId=$app($shared)[1]['data']['trip']['id'];$before=count($readRequests());
+    [$status,$sharedCheck]=$app(['init_data'=>$auth,'action'=>'initial_check','trip_id'=>$sharedId]);
+    verify($status===200 && $sharedCheck['data']['source']==='cache' && $sharedCheck['data']['sent_count']===2,'A second passenger count receives locally filtered results from fresh shared inventory');
+    verify(count(array_filter(array_slice($readRequests(),$before),static fn($r)=>$r['path']==='/search'))===0,'Matching initial searches do not fan out upstream');
+    $db=new SQLite3($temp.'/users.db');$db->exec('UPDATE user_trips SET follow_mode=\'none\' WHERE id='.(int)$sharedId);$db->close();
+    $before=count($readRequests());runPhp(array_merge($php,[$temp.'/check_tickets.php']),$temp);
+    verify(count($newMessages($before))===0,'The next fresh cron poll cannot repeat tickets accepted by the immediate check');
+    $pending=$create;$pending['init_data']=$authFor(404);$pending['request_id']=str_repeat('p',32);
+    $pendingId=$app($pending)[1]['data']['trip']['id'];$before=count($readRequests());
+    $pendingCheck=$app(['init_data'=>$authFor(404),'action'=>'initial_check','trip_id'=>$pendingId]);
+    verify($pendingCheck[0]===200 && $pendingCheck[1]['data']['state']==='inactive' && count($readRequests())===$before,'An unapproved account gets an immediate explanation without searches or bot sends');
     [$status,$retry]=$app($create);
     verify($status===200 && $retry['data']['created']===false && $retry['data']['trip']['id']===$id,'Retry returns original trip');
     $mismatch=$create;$mismatch['trip']['count']=3;
@@ -850,6 +887,7 @@ PHP);
     echo "PASS Default all, per-message mute/restore, future trains, trip footer and menu controls\n";
 } finally {
     if (isset($db) && $db instanceof SQLite3) { try { $db->close(); } catch (Throwable $ignored) {} }
+    if (is_resource($appServer)) { proc_terminate($appServer); proc_close($appServer); }
     if (is_resource($server)) {
         proc_terminate($server);
         proc_close($server);

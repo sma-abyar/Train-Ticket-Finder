@@ -95,14 +95,27 @@ function miniAppCreate(SQLite3 $db, string $chat, array $body): array
             $db->exec('COMMIT');
             return ['trip'=>miniAppTrip($saved), 'created'=>false];
         }
-        followSql($db, "INSERT INTO user_trips (chat_id,route,date,return_date,count,type,coupe,filter,no_counting_notif,no_ticket_notif,bad_data_notif,allow_partial_capacity,search_filters,follow_mode) VALUES (:chat,:route,:date,:date,:count,:type,:coupe,0,0,0,0,:partial,:filters,'all')", [
+        $saved = null;
+        $matches = followSql($db, 'SELECT * FROM user_trips WHERE chat_id=:chat AND route=:route AND date=:date AND count=:count AND type=:type AND coupe=:coupe AND filter=0 ORDER BY id', [
+            ':chat'=>$chat, ':route'=>$trip['route'], ':date'=>$trip['date'], ':count'=>$trip['count'], ':type'=>$trip['type'], ':coupe'=>$trip['coupe']]);
+        while ($candidate = $matches->fetchArray(SQLITE3_ASSOC)) {
+            if ((int)$candidate['allow_partial_capacity'] === $trip['allow_partial_capacity'] && tripFilters($candidate) == $trip['search_filters']) {
+                $saved = $candidate;
+                break;
+            }
+        }
+        $matches->finalize();
+        $created = $saved === null;
+        if ($created) {
+            followSql($db, "INSERT INTO user_trips (chat_id,route,date,return_date,count,type,coupe,filter,no_counting_notif,no_ticket_notif,bad_data_notif,allow_partial_capacity,search_filters,follow_mode) VALUES (:chat,:route,:date,:date,:count,:type,:coupe,0,0,0,0,:partial,:filters,'all')", [
             ':chat'=>$chat, ':route'=>$trip['route'], ':date'=>$trip['date'], ':count'=>$trip['count'], ':type'=>$trip['type'], ':coupe'=>$trip['coupe'], ':partial'=>$trip['allow_partial_capacity'], ':filters'=>json_encode($trip['search_filters'], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-        ]);
-        $id = $db->lastInsertRowID();
+            ]);
+            $saved = ownedFollowTrip($db, $db->lastInsertRowID(), $chat);
+        }
+        $id = (int)$saved['id'];
         followSql($db, 'INSERT INTO miniapp_requests VALUES (:chat,:key,:hash,:id,:time)', [':chat'=>$chat, ':key'=>$key, ':hash'=>$hash, ':id'=>$id, ':time'=>time()]);
-        $saved = ownedFollowTrip($db, $id, $chat);
         if (!$db->exec('COMMIT')) { throw new RuntimeException($db->lastErrorMsg()); }
-        return ['trip'=>miniAppTrip($saved), 'created'=>true];
+        return ['trip'=>miniAppTrip($saved), 'created'=>$created];
     } catch (Throwable $error) { $db->exec('ROLLBACK'); throw $error; }
 }
 

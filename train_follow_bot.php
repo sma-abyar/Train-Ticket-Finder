@@ -103,6 +103,50 @@ function processSingleUserTrip($chatId, int $tripId): void
     }
 }
 
+/** First check is separate from saving: a slow provider cannot make a saved trip look lost. */
+function checkInitialTrip(SQLite3 $db, array $trip): array
+{
+    if (!ticketTripSendAllowed($db, $trip)) {
+        return ['state'=>'inactive', 'message'=>tripFollowMode($trip)==='none'
+            ? 'هشدار این سفر خاموش است؛ می‌توانی از تنظیمات سفر روشنش کنی.'
+            : 'سفر ذخیره شده است؛ پایش پس از تأیید حساب آغاز می‌شود.'];
+    }
+    $readPoll = static fn() => followSql($db, 'SELECT * FROM ticket_poll_status WHERE trip_id=:id', [':id'=>(int)$trip['id']])->fetchArray(SQLITE3_ASSOC);
+    if ($poll = $readPoll()) { return initialTripCheckResult($poll, 'history'); }
+    $token = claimTicketTripRun($db, (int)$trip['id']);
+    if ($token === null) { return ['state'=>'checking', 'message'=>'بررسی این سفر در حال انجام است؛ نتیجهٔ تازه به ربات ارسال می‌شود.']; }
+    $errorType = null;
+    try {
+        if ($poll = $readPoll()) { return initialTripCheckResult($poll, 'history'); }
+        $search = initialTrainSearch($db, $trip, static fn(array $payload) => requestTicketSearch($payload, false));
+        if ($search['state'] === 'checking') {
+            return ['state'=>'checking', 'message'=>'موجودی همین مسیر و روز در حال دریافت است؛ نتیجه را تا چند لحظهٔ دیگر بررسی می‌کنیم.'];
+        }
+        fetchTickets($trip, new TicketSearchBatch(static fn() => $search['response']), null, $token);
+        return initialTripCheckResult($readPoll() ?: null, $search['source'], $search['checked_at']);
+    } catch (Throwable $error) {
+        $errorType = get_class($error);
+        error_log('Initial trip check failed for trip '.(int)$trip['id'].': '.$errorType);
+        return ['state'=>'unavailable', 'message'=>'سفر ثبت شده است؛ بررسی اولیه کامل نشد. پایش خودکار دوباره تلاش می‌کند.'];
+    } finally {
+        completeTicketTripRun($db, (int)$trip['id'], $token, $errorType);
+    }
+}
+
+function initialTripCheckResult(?array $poll, string $source, ?int $checkedAt = null): array
+{
+    $state = !$poll || !$poll['inventory_ok'] ? 'unavailable'
+        : ((int)$poll['failed_count'] > 0 ? 'send_pending' : ((int)$poll['eligible_count'] > 0 ? 'ready' : 'no_match'));
+    $message = match ($state) {
+        'ready'=>(int)$poll['eligible_count'].' قطار با شرایط سفرت پیدا شد. '.((int)$poll['sent_count'] > 0 ? 'پیام بلیط‌ها به ربات ارسال شد.' : 'هشدار وضعیت ثابت دوباره ارسال نمی‌شود.'),
+        'no_match'=>'فعلاً بلیطی مطابق ظرفیت و فیلترهای سفرت پیدا نشد؛ اگر موجود شود خبرت می‌کنیم.',
+        'send_pending'=>'بلیط مطابق سفرت پیدا شد؛ ارسال بعضی پیام‌ها کامل نشد و خودکار دوباره امتحان می‌شود.',
+        default=>'سفر ثبت شده است؛ دریافت موجودی فعلاً انجام نشد. پایش خودکار دوباره تلاش می‌کند.',
+    };
+    return ['state'=>$state, 'source'=>$source, 'checked_at'=>$checkedAt ?? ($poll['checked_at'] ?? null),
+        'eligible_count'=>(int)($poll['eligible_count'] ?? 0), 'sent_count'=>(int)($poll['sent_count'] ?? 0), 'message'=>$message];
+}
+
 function showTrainFollowPicker($chatId, int $tripId): void
 {
     $db = initDatabase();

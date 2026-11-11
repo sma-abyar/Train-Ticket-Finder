@@ -416,7 +416,7 @@ function cleanupExpiredTrips(?string $chat_id = null): void
 }
 
 // Raw upstream data can be shared; notification state and reservation buttons cannot.
-function requestTicketSearch(array $postFields)
+function requestTicketSearch(array $postFields, bool $updateCatalog = true)
 {
     global $url;
     $ch = curl_init();
@@ -439,10 +439,10 @@ function requestTicketSearch(array $postFields)
     curl_close($ch);
     $data = is_string($response) && $httpStatus>=200 && $httpStatus<300 ? json_decode($response, true) : null;
     $tickets = trainSearchTickets($data);
-    if ($tickets !== null) {
+    if ($tickets !== null && $updateCatalog) {
         $db = initDatabase();
         storeTrainCatalog($db, $postFields, $tickets);
-    } else {
+    } elseif ($tickets === null) {
         error_log('Upstream train search unavailable for search ' . substr(trainCatalogKey($postFields), 0, 12) . ' http='.$httpStatus.' curl_errno='.$curlError);
     }
     return $data;

@@ -40,6 +40,19 @@ $tests['mini app preferences use ownership and revision without changing train c
     assertFollowError(static fn()=>miniAppPreferences($db,'101',$body),409);
 };
 
+$tests['a second create request reuses the same owned trip without resetting alerts'] = static function () {
+    [$db]=followFixture();$body=['request_id'=>str_repeat('a',32),'trip'=>miniAppInput()];
+    $first=miniAppCreate($db,'101',$body);$id=$first['trip']['id'];
+    $db->exec("UPDATE user_trips SET follow_mode='none',follow_revision=3 WHERE id=".$id);
+    $body['request_id']=str_repeat('b',32);$same=miniAppCreate($db,'101',$body);
+    expect($same['created'],false);expect($same['trip']['id'],$id);expect($same['trip']['mode'],'none');expect($same['trip']['revision'],3);
+    expect((int)$db->querySingle('SELECT COUNT(*) FROM user_trips'),2);
+    expect(miniAppCreate($db,'101',$body)['trip']['id'],$id,'The second request key must also be idempotent');
+    $body['request_id']=str_repeat('c',32);$body['trip']['count']=3;
+    expect(miniAppCreate($db,'101',$body)['created'],true,'Different passenger requirements remain separate trips');
+    expect(miniAppCreate($db,'202',$body)['created'],true,'Other users keep their own subscriptions');
+};
+
 $tests['mini app deletes only an owned unchanged trip and clears its alert history'] = static function () {
     [$db,$trip]=followFixture();$key=trainFollowKey(followTicket());
     $trip=saveTrainFollows($db,(int)$trip['id'],'101','selected',[$key],0);

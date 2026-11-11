@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark"><title>بلیط قطار</title>
-  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=12">
+  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=13">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="telegram-app.php?asset=calendar&amp;v=12" defer></script><script src="telegram-app.php?asset=app&amp;v=12" defer></script>
+  <script src="telegram-app.php?asset=calendar&amp;v=13" defer></script><script src="telegram-app.php?asset=app&amp;v=13" defer></script>
 </head>
 <body>
 <div class="app">
@@ -58,7 +58,7 @@
         <details class="inventory-details"><summary>وضعیت بررسی و ارسال</summary><p id="catalog-time" class="small"></p><button id="notification-diagnostics" type="button" class="secondary full">گرفتن گزارش مشکل ارسال</button><p id="diagnostics-hint" class="small" hidden>این گزارش را انتخاب و کپی کن و برای پشتیبانی بفرست. شامل توکن ربات یا مشخصات مسافران نیست.</p><textarea id="notification-report" readonly dir="ltr" aria-label="گزارش مشکل ارسال" rows="12" hidden></textarea></details>
       </div>
     </section>
-    <section id="success-view" hidden class="success"><div class="success-mark">✓</div><h1 tabindex="-1">سفر ثبت شد</h1><p id="success-summary"></p><p class="intro">هشدار همهٔ قطارهای این سفر فعال است.</p><p id="success-approval" class="notice" hidden>پایش پس از تأیید حساب توسط مدیر آغاز می‌شود.</p><button type="button" id="success-alerts" class="primary full">انتخاب قطارهای دلخواه</button><button type="button" id="success-trips" class="secondary full">دیدن سفرهای من</button></section>
+    <section id="success-view" hidden class="success"><div class="success-mark">✓</div><h1 id="success-title" tabindex="-1">سفر ثبت شد</h1><p id="success-summary"></p><p id="success-mode" class="intro">هشدار همهٔ قطارهای این سفر فعال است.</p><p id="success-check" class="intro" role="status" aria-live="polite"></p><p id="success-check-time" class="intro" hidden></p><button type="button" id="success-retry" class="secondary full" hidden>بررسی نتیجهٔ اولیه</button><p id="success-approval" class="notice" hidden>پایش پس از تأیید حساب توسط مدیر آغاز می‌شود.</p><button type="button" id="success-alerts" class="primary full">انتخاب قطارهای دلخواه</button><button type="button" id="success-trips" class="secondary full">دیدن سفرهای من</button></section>
   </main>
   <nav class="bottom-nav" aria-label="بخش‌های مینی‌اپ"><button type="button" data-nav="trips"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="17" rx="3"/><path d="M8 2v4m8-4v4M8 11h8m-8 5h5"/></svg>سفرهای من</button><button type="button" data-nav="create"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>سفر جدید</button><button type="button" data-nav="alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 2v2"/></svg>هشدارها</button></nav>
 </div>

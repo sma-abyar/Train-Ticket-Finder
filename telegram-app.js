@@ -6,6 +6,7 @@
   const norm=s=>en(s).replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[\s‌]/g,'').toLowerCase();
   const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
   let boot, bootAt=0, today, todayDate, month, year, step=1, view='create', count=1, cityTarget, busy=false, editTrip=null, createdTrip=null, deletingTrip=null;
+  let initialCheckRun=0;
   let draft={origin:'',destination:'',date:'',count:1,type:0,coupe:false,allow_partial_capacity:false,search_filters:{}}, requestId='', lockedPayload=null;
   let catalog=null, mode='all', selected=new Set(), excluded=new Set(), alertDirty=false, preferencesDirty=false, pendingAlertOperation=null, alertSaveStatus='saved', alertSyncUnknown=false;
   let trainFilter='all';
@@ -130,8 +131,32 @@
     setBusy(true);const result=await api('create_trip',{request_id:requestId,trip:draft});createdTrip=result.trip;
     boot.trips=[result.trip,...boot.trips.filter(t=>t.id!==result.trip.id)];try{sessionStorage.removeItem(storageKey());}catch(_){}
     requestId='';lockedPayload=null;draft={origin:'',destination:'',date:'',count:1,type:0,coupe:false,allow_partial_capacity:false,search_filters:{}};
-    renderTrips();setBusy(false);showView('success');$('success-summary').textContent=routeText(createdTrip)+' · '+dateText(createdTrip.date);$('success-approval').hidden=boot.approved;tg?.HapticFeedback?.notificationOccurred('success');
+    renderTrips();setBusy(false);showView('success');$('success-summary').textContent=routeText(createdTrip)+' · '+dateText(createdTrip.date);$('success-approval').hidden=boot.approved;
+    document.querySelector('#success-view h1').textContent=result.created?'سفر ثبت شد':'این سفر از قبل ثبت شده است';
+    $('success-mode').textContent=createdTrip.mode==='none'?'هشدار این سفر خاموش است.':createdTrip.mode==='all'?'هشدار همهٔ قطارهای این سفر فعال است.':'انتخاب‌های قبلی هشدار این سفر حفظ شدند.';
+    void startInitialCheck(createdTrip.id);tg?.HapticFeedback?.notificationOccurred('success');
   }catch(error){formError(error.message);if(error.status===409&&editTrip){notice('تنظیمات هم‌زمان تغییر کرده؛ اطلاعاتت را نگه داشتیم. برای نسخهٔ تازه از سفرهای من دوباره باز کن.',true);}}finally{setBusy(false);}}
+  async function startInitialCheck(tripId){
+    const run=++initialCheckRun, current=()=>run===initialCheckRun&&createdTrip?.id===tripId;
+    $('success-check').textContent='سفر ذخیره شد؛ در حال بررسی بلیط‌های همین مسیر و روز…';
+    $('success-check-time').hidden=true;$('success-retry').hidden=true;
+    try{
+      for(let attempt=0;attempt<12;attempt++){
+        const result=await api('initial_check',{trip_id:tripId});
+        if(!current())return;
+        $('success-check').textContent=result.message;
+        if(result.checked_at){$('success-check-time').textContent='آخرین بررسی موجودی: '+new Date(Number(result.checked_at)*1000).toLocaleString('fa-IR');$('success-check-time').hidden=false;}
+        if(result.state!=='checking')return;
+        if(view!=='success')return;
+        if(attempt===11){$('success-check').textContent='سفر ذخیره شده و بررسی ادامه دارد؛ نتیجهٔ تازه به ربات ارسال می‌شود.';$('success-retry').hidden=false;return;}
+        await new Promise(resolve=>setTimeout(resolve,3000));
+      }
+    }catch(error){
+      if(!current())return;
+      $('success-check').textContent='سفر ذخیره شده است؛ نتیجهٔ بررسی اولیه دریافت نشد. پایش خودکار ادامه دارد.';
+      $('success-retry').hidden=error.status===401||error.status===404;
+    }
+  }
   function trainIsOn(key) {
     return mode === 'all' || (mode === 'except' && !excluded.has(key)) || (mode === 'selected' && selected.has(key));
   }
@@ -340,6 +365,7 @@
   $('previous-month').onclick=()=>changeMonth(-1);$('next-month').onclick=()=>changeMonth(1);$('minus').onclick=()=>{if(count>1){count--;renderCount();if(!editTrip){draft.count=count;persist();}}};$('plus').onclick=()=>{if(count<12){count++;renderCount();if(!editTrip){draft.count=count;persist();}}};
   $('step-2').addEventListener('input',()=>{if(editTrip){preferencesDirty=true;markClose();return;}try{Object.assign(draft,readPreferences());persist();}catch(_){} });
   $('new-trip').onclick=freshCreate;$('success-trips').onclick=()=>showView('trips');$('success-alerts').onclick=()=>openAlerts(createdTrip.id);$('alerts-back').onclick=()=>showView('trips');$('save-alerts').onclick=saveAlerts;$('refresh-trains').onclick=refreshCatalog;$('train-search').oninput=()=>catalog&&renderTrains();
+  $('success-retry').onclick=()=>createdTrip&&startInitialCheck(createdTrip.id);
   ['all','on','stock'].forEach(key=>$('filter-'+key).onclick=()=>{if(!catalog||busy)return;trainFilter=key;renderTrains();});
   $('notification-diagnostics').onclick=showNotificationDiagnostics;
   document.querySelectorAll('[name=alert-mode]').forEach(input=>input.onchange=()=>{if(busy)return;return persistAlertChange({kind:'mode',mode:input.value});});

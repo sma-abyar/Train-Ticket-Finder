@@ -172,9 +172,14 @@ function saveTripFilterDraft($chatId, array $trip, bool $openFollows = false): v
     clearUserState($chatId);
     sendTripFilterMessage($chatId, 'سفر و فیلترهای شما ثبت شد.', getMainMenuKeyboard($chatId));
     $targetTripId = (int) ($newTripId ?? $trip['editing_trip_id']);
+    if ($newTripId !== null) {
+        $db = initDatabase();
+        try { checkInitialTrip($db, ownedFollowTrip($db, $targetTripId, (string)$chatId)); }
+        finally { $db->close(); }
+    }
     if ($openFollows) {
         showTrainFollowPicker($chatId, $targetTripId);
-    } else {
+    } elseif ($newTripId === null) {
         processSingleUserTrip($chatId, $targetTripId);
     }
 }

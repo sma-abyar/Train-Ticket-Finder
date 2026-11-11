@@ -278,6 +278,45 @@ $tests['mute and mode edits do not re-arm other unchanged enabled trains']=stati
     $alerts->observe($trip,[$a,$b]);expect($alerts->claim($trip,$kb),null);
 };
 
+$tests['initial searches reuse recent broad inventory and refresh old stock'] = static function () {
+    [$db,$trip]=followFixture();$calls=0;$ticket=followTicket(['counting_en'=>4]);
+    storeTrainCatalog($db,TicketSearchBatch::payload($trip),[$ticket]);
+    $request=static function($payload)use(&$calls,$ticket){$calls++;expect($payload['count'],1);return ['data'=>['status'=>'success','data'=>['departure'=>[$ticket]]]];};
+    $result=initialTrainSearch($db,array_replace($trip,['count'=>8]),$request);
+    expect($result['source'],'cache');expect($calls,0);
+    $db->exec('UPDATE train_search_catalog SET updated_at=updated_at-121');
+    expect(initialTrainSearch($db,$trip,$request)['source'],'live');expect($calls,1);
+    expect(initialTrainSearch($db,array_replace($trip,['count'=>2]),$request)['source'],'cache');expect($calls,1);
+    expect(initialTrainSearch($db,array_replace($trip,['type'=>1]),$request)['source'],'live');expect($calls,2,'Different quotas must not share inventory');
+};
+
+$tests['initial searches lease shared requests and recover abandoned claims'] = static function () {
+    [$db,$trip]=followFixture();$calls=0;
+    $db->exec('DELETE FROM train_search_catalog');
+    $request=static function($payload)use($db,$trip,&$calls){
+        $calls++;
+        $parallel=initialTrainSearch($db,$trip,static function(){throw new RuntimeException('Duplicate concurrent search');});
+        expect($parallel['state'],'checking');
+        return ['data'=>['status'=>'success','data'=>['departure'=>[]]]];
+    };
+    expect(initialTrainSearch($db,$trip,$request)['state'],'ready');expect($calls,1);
+    expect(initialTrainSearch($db,$trip,$request)['source'],'cache');expect($calls,1,'A valid empty inventory is also shared');
+    $db->exec('DELETE FROM train_search_catalog');
+    $db->exec("UPDATE train_initial_searches SET claim_token='crashed',claimed_at=1");
+    expect(initialTrainSearch($db,$trip,$request)['state'],'ready');expect($calls,2);
+};
+
+$tests['failed initial searches cannot notify from old stock or multiply an outage'] = static function () {
+    [$db,$trip]=followFixture();$calls=0;
+    storeTrainCatalog($db,TicketSearchBatch::payload($trip),[followTicket(['counting_en'=>8])]);
+    $db->exec('UPDATE train_search_catalog SET updated_at=updated_at-121');
+    $request=static function()use(&$calls){$calls++;return null;};
+    $result=initialTrainSearch($db,$trip,$request);expect($result['state'],'unavailable');expect($result['response'],null);
+    expect(initialTrainSearch($db,$trip,$request)['source'],'recent_failure');expect($calls,1);
+    $db->exec('UPDATE train_initial_searches SET failed_at=1');
+    initialTrainSearch($db,$trip,$request);expect($calls,2);
+};
+
 $tests['independent train switches merge changes and idempotent retries preserve revision'] = static function () {
     [$db,$trip]=followFixture();
     $a=followTicket();$b=followTicket(['id'=>'second','train_number_en'=>189,'train_number'=>'۱۸۹','time'=>'۱۵:۲۰']);

@@ -34,6 +34,11 @@ try {
         $data = ['cities'=>miniAppCities(), 'today'=>$now->format('Y-m-d'), 'server_time'=>$now->getTimestamp(), 'user_id'=>$chat, 'approved'=>isUserApproved($chat), 'trips'=>$trips];
     } elseif ($action === 'create_trip') {
         $data = miniAppCreate($db, $chat, $body);
+    } elseif ($action === 'initial_check') {
+        if (!is_int($body['trip_id'] ?? null) || $body['trip_id'] < 1) { throw new InvalidArgumentException('سفر معتبر نیست.',400); }
+        // Saving was already acknowledged. Finish delivery even if the Mini App closes.
+        ignore_user_abort(true);
+        $data = checkInitialTrip($db, ownedFollowTrip($db, $body['trip_id'], $chat));
     } elseif ($action === 'update_preferences') {
         $data = miniAppPreferences($db, $chat, $body);
     } elseif ($action === 'delete_trip') {

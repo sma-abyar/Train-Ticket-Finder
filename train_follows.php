@@ -32,6 +32,9 @@ function ensureTrainFollowTables(SQLite3 $db): void
             claim_token TEXT, claimed_at INTEGER,
             PRIMARY KEY (trip_id, train_key)
         )',
+        'CREATE TABLE IF NOT EXISTS train_initial_searches (
+            search_key TEXT PRIMARY KEY, claim_token TEXT, claimed_at INTEGER, updated_at INTEGER NOT NULL, failed_at INTEGER
+        )',
         'CREATE TRIGGER IF NOT EXISTS delete_train_follow_delivery AFTER DELETE ON user_trips
             BEGIN DELETE FROM train_follow_delivery WHERE trip_id = OLD.id; END',
     ] as $sql) {
@@ -169,6 +172,46 @@ function loadTrainCatalog(SQLite3 $db, array $trip): ?array
     }
     return ['tickets'=>json_decode($row['tickets'], true, 512, JSON_THROW_ON_ERROR),
         'known_trains'=>json_decode($row['known_trains'], true, 512, JSON_THROW_ON_ERROR), 'updated_at'=>(int) $row['updated_at']];
+}
+
+/** Share only recent successful inventory; never use historical stock as a live alert. */
+function initialTrainSearch(SQLite3 $db, array $trip, callable $request, ?int $now = null): array
+{
+    $now = $now ?? time();
+    $fresh = static function () use ($db, $trip, $now): ?array {
+        $catalog = loadTrainCatalog($db, $trip);
+        return $catalog && $catalog['updated_at'] <= $now && $now - $catalog['updated_at'] <= 120 ? $catalog : null;
+    };
+    $cached = static fn(array $catalog): array => ['state'=>'ready', 'source'=>'cache', 'checked_at'=>$catalog['updated_at'],
+        'response'=>['data'=>['status'=>'success', 'data'=>['departure'=>$catalog['tickets']]]]];
+    if ($catalog = $fresh()) { return $cached($catalog); }
+    $payload = TicketSearchBatch::payload($trip);
+    $key = trainCatalogKey($payload);
+    $failure = followSql($db, 'SELECT failed_at FROM train_initial_searches WHERE search_key=:key', [':key'=>$key])->fetchArray(SQLITE3_ASSOC);
+    if (!empty($failure['failed_at']) && $now - (int)$failure['failed_at'] < 30) {
+        return ['state'=>'unavailable', 'source'=>'recent_failure', 'checked_at'=>(int)$failure['failed_at'], 'response'=>null];
+    }
+    $token = bin2hex(random_bytes(16));
+    followSql($db, 'INSERT INTO train_initial_searches(search_key,claim_token,claimed_at,updated_at) VALUES(:key,:token,:now,:now)
+        ON CONFLICT(search_key) DO UPDATE SET claim_token=excluded.claim_token,claimed_at=excluded.claimed_at,updated_at=excluded.updated_at
+        WHERE train_initial_searches.claimed_at IS NULL OR train_initial_searches.claimed_at<:expired',
+        [':key'=>$key, ':token'=>$token, ':now'=>$now, ':expired'=>$now-90]);
+    if ($db->changes() !== 1) { return ['state'=>'checking']; }
+    $failed = false;
+    try {
+        // A concurrent request may have finished between our first read and claim.
+        if ($catalog = $fresh()) { return $cached($catalog); }
+        $failed = true;
+        $response = $request($payload);
+        $tickets = trainSearchTickets($response);
+        $failed = $tickets === null;
+        if ($tickets !== null) { storeTrainCatalog($db, $payload, $tickets); }
+        return ['state'=>$tickets !== null ? 'ready' : 'unavailable', 'source'=>'live', 'checked_at'=>time(), 'response'=>$response];
+    } finally {
+        followSql($db, 'UPDATE train_initial_searches SET claim_token=NULL,claimed_at=NULL,failed_at=:failure WHERE search_key=:key AND claim_token=:token',
+            [':key'=>$key, ':token'=>$token, ':failure'=>$failed ? time() : null]);
+        followSql($db, 'DELETE FROM train_initial_searches WHERE claimed_at IS NULL AND updated_at<:old', [':old'=>$now-7*86400]);
+    }
 }
 
 function ownedFollowTrip(SQLite3 $db, int $tripId, string $chatId): array
