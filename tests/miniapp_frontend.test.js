@@ -81,6 +81,11 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   assert.equal(trainInput(ui,'189').checked,false,'Resuming one service cannot resume unrelated paused choices');
   ui.els['train-search'].value='نامربوط';ui.els['train-search'].oninput();assert.equal(ui.els['train-empty'].hidden,false);assert.match(ui.els['alert-count'].textContent,/۱/);
   ui.els['train-search'].value='';ui.els['train-search'].oninput();
+  const beforeFilters=ui.calls.length;
+  ui.els['filter-stock'].onclick();assert.equal(ui.els['train-list'].children.length,1,'Capacity filter includes a service with seats even if travel preferences exclude it');assert.equal(trainInput(ui,'188'),null);assert.ok(trainInput(ui,'189'));
+  ui.els['filter-on'].onclick();assert.equal(ui.els['train-list'].children.length,1);assert.ok(trainInput(ui,'188'),'Followed sold-out trains remain visible in the enabled filter');assert.equal(trainInput(ui,'189'),null);
+  assert.equal(ui.calls.length,beforeFilters,'List filters do not change settings or request fresh inventory');
+  ui.els['filter-all'].onclick();assert.equal(ui.els['train-list'].children.length,2);assert.equal(ui.els['filter-all'].attributes['aria-pressed'],'true');
   ui.fail();await toggle(ui,'189',true);
   assert.equal(trainInput(ui,'189').checked,false,'Rejected switches return to confirmed server state');
   assert.equal(ui.els['save-alerts'].hidden,false,'Failed changes can be retried');
@@ -94,6 +99,9 @@ function choose(ui,target,name){ui.els[target].onclick();ui.els['city-list'].chi
   assert.equal(trainInput(concurrent,'188').checked,false);assert.equal(trainInput(concurrent,'189').checked,true);assert.equal(concurrent.els['save-alerts'].hidden,false,'A conflicting choice set cannot be reported as saved merely because the mode matches');
   const expired=await fixture();await expired.els['trip-list'].children[0].children[2].onclick();expired.fail(401);await toggle(expired,'188',false);
   assert.equal(expired.els['alert-controls'].hidden,true);assert.match(expired.els.notice.textContent,/نشست تلگرام منقضی/);assert.equal(expired.els['save-alerts'].hidden,true);
+  const filtered=await fixture();await filtered.els['trip-list'].children[0].children[2].onclick();filtered.els['filter-on'].onclick();await toggle(filtered,'188',false);
+  assert.equal(trainInput(filtered,'188'),null);assert.equal(filtered.els['filter-on'].focused,true,'Turning off the currently filtered service preserves keyboard focus on the filter');
+  filtered.els['filter-all'].onclick();assert.equal(trainInput(filtered,'188').checked,false,'A hidden disabled service can be found and enabled again');
   const rapid=await fixture();await rapid.els['trip-list'].children[0].children[2].onclick();const releaseSwitch=rapid.holdSwitch();const toggling=toggle(rapid,'188',false);await flush();await toggle(rapid,'189',false);
   assert.equal(rapid.els.main.inert,false,'The content and live status stay accessible during switch persistence');assert.equal(trainInput(rapid,'189').disabled,true);
   assert.equal(rapid.calls.filter(c=>c.action==='set_train').length,1);assert.equal(trainInput(rapid,'189').checked,true,'Busy switches cannot visually claim a second unsaved change');releaseSwitch();await toggling;assert.equal(trainInput(rapid,'188').checked,false);assert.equal(trainInput(rapid,'189').checked,true);

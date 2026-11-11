@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark"><title>بلیط قطار</title>
-  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=5">
+  <link rel="stylesheet" href="telegram-app.php?asset=style&amp;v=8">
   <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
-  <script src="telegram-app.php?asset=calendar&amp;v=5" defer></script><script src="telegram-app.php?asset=app&amp;v=5" defer></script>
+  <script src="telegram-app.php?asset=calendar&amp;v=8" defer></script><script src="telegram-app.php?asset=app&amp;v=8" defer></script>
 </head>
 <body>
 <div class="app">
@@ -39,8 +39,7 @@
     </section>
     <section id="trips-view" hidden aria-labelledby="trips-title"><div class="view-heading"><h1 id="trips-title" tabindex="-1">سفرهای من</h1><button id="new-trip" class="secondary" type="button">+ سفر جدید</button></div><p class="intro">هشدارها و تنظیمات هر مسیر را مدیریت کن.</p><div id="approval" class="notice" hidden>حساب شما در انتظار تأیید است. سفر ذخیره می‌شود؛ پایش پس از تأیید مدیر آغاز خواهد شد.</div><div id="trip-list" class="trip-list"></div></section>
     <section id="alerts-view" hidden aria-labelledby="alerts-title">
-      <button type="button" id="alerts-back" class="text-button back-link">بازگشت به سفرها</button>
-      <h1 id="alerts-title" tabindex="-1">هشدار قطارها</h1><p id="alert-trip" class="route-strip"></p>
+      <div class="alerts-toolbar"><h1 id="alerts-title" tabindex="-1">هشدار قطارها</h1><button type="button" id="alerts-back" class="text-button back-link">بازگشت به سفرها</button></div><div id="alert-trip" class="journey-summary"></div>
       <div id="alert-controls" hidden>
         <details class="alert-policy"><summary><span>تنظیم کلی هشدارها</span><span id="policy-summary"></span></summary>
           <fieldset class="alert-modes"><legend class="sr-only">حالت هشدار</legend>
@@ -52,9 +51,10 @@
         </details>
         <div class="section-line"><h2>قطارهای این مسیر</h2><button id="refresh-trains" type="button" class="text-button">به‌روزرسانی</button></div>
         <label class="search-box"><span class="sr-only">جست‌وجوی قطار</span><input id="train-search" type="search" placeholder="نام، شماره یا ساعت قطار"></label>
+        <div class="train-filters" role="group" aria-label="نمایش قطارها"><button id="filter-all" type="button" aria-pressed="true">همه</button><button id="filter-on" type="button" aria-pressed="false">هشدار روشن</button><button id="filter-stock" type="button" aria-pressed="false">دارای ظرفیت</button></div>
         <div id="alert-feedback" class="alert-feedback"><span id="alert-count" role="status" aria-live="polite"></span><button type="button" id="save-alerts" class="text-button" hidden>تلاش دوباره</button></div>
-        <p class="list-help">قطار ناموجود را هم می‌توانی روشن کنی تا در صورت موجود شدن خبر بدهیم.</p>
         <div id="train-list"></div><p id="train-empty" class="empty" hidden>قطاری با این مشخصات پیدا نشد.</p>
+        <p class="list-help">برای قطار ناموجود هم هشدار بگذار؛ با باز شدن ظرفیت خبرت می‌کنیم.</p>
         <details class="inventory-details"><summary>وضعیت بررسی و ارسال</summary><p id="catalog-time" class="small"></p></details>
       </div>
     </section>

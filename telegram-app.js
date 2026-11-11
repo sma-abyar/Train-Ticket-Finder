@@ -8,12 +8,13 @@
   let boot, bootAt=0, today, todayDate, month, year, step=1, view='create', count=1, cityTarget, busy=false, editTrip=null, createdTrip=null, deletingTrip=null;
   let draft={origin:'',destination:'',date:'',count:1,type:0,coupe:false,allow_partial_capacity:false,search_filters:{}}, requestId='', lockedPayload=null;
   let catalog=null, mode='all', selected=new Set(), excluded=new Set(), alertDirty=false, preferencesDirty=false, pendingAlertOperation=null, alertSaveStatus='saved', alertSyncUnknown=false;
+  let trainFilter='all';
   const modeLabel=trip=>trip.mode==='except'&&Number.isInteger(trip.excluded_count)?fa(trip.excluded_count)+' قطار خاموش'
     :trip.mode==='selected'&&Number.isInteger(trip.selected_count)?fa(trip.selected_count)+' قطار انتخابی'
     :({all:'همه روشن',except:'چند قطار خاموش',selected:'قطارهای انتخابی',none:'هشدار خاموش'}[trip.mode]||'همه روشن');
   let theme=tg?.colorScheme||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
   try{theme=localStorage.getItem('hamsafar-theme')||theme;}catch(_){}if(!['light','dark'].includes(theme))theme='light';
-  function applyTheme(){document.documentElement.dataset.theme=theme;tg?.setHeaderColor?.(theme==='dark'?'#202329':'#ffffff');tg?.setBackgroundColor?.(theme==='dark'?'#202329':'#ffffff');}
+  function applyTheme(){document.documentElement.dataset.theme=theme;tg?.setHeaderColor?.(theme==='dark'?'#1b222d':'#f2f4f7');tg?.setBackgroundColor?.(theme==='dark'?'#1b222d':'#f2f4f7');}
   applyTheme();$('theme-toggle').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();try{localStorage.setItem('hamsafar-theme',theme);}catch(_){}};
   function notice(text,error=false){$('notice').textContent=text;$('notice').className='notice'+(error?' error':'');$('notice').hidden=!text;}
   function formError(text){$('form-error').textContent=text;$('form-error').hidden=!text;if(text)$('form-error').scrollIntoView({block:'center'});}
@@ -152,7 +153,14 @@
     list.replaceChildren();
     const query = norm($('train-search').value);
     const trip = boot.trips.find(item => item.id === catalog.trip_id);
-    const items = catalog.options.filter(item => norm([item.number,item.time,item.company,item.wagon].join(' ')).includes(query));
+    const inStock=item=>item.capacity>0&&!item.missing;
+    const counts={all:catalog.options.length,on:catalog.options.filter(item=>trainIsOn(item.key)).length,stock:catalog.options.filter(inStock).length};
+    for(const [key,label] of [['all','همه'],['on','هشدار روشن'],['stock','دارای ظرفیت']]){
+      $('filter-'+key).textContent=label+' '+fa(counts[key]);
+      $('filter-'+key).setAttribute('aria-pressed',String(trainFilter===key));
+    }
+    const items = catalog.options.filter(item => norm([item.number,item.time,item.company,item.wagon].join(' ')).includes(query)
+      &&(trainFilter==='all'||trainFilter==='on'&&trainIsOn(item.key)||trainFilter==='stock'&&inStock(item)));
     $('train-empty').hidden = items.length > 0;
     items.forEach(item => {
       const row = document.createElement('article'); row.className = 'train-card';
@@ -171,7 +179,8 @@
       const state = document.createElement('span'); state.className = 'switch-label'; state.setAttribute('aria-hidden','true');
       const pending = pendingAlertOperation?.kind === 'train' && pendingAlertOperation.key === item.key;
       state.textContent = pending && alertSaveStatus === 'saving' ? 'در حال ثبت' : pending && alertSyncUnknown ? 'تأیید نشد' : input.checked ? 'روشن' : 'خاموش';
-      control.append(input,track,state);
+      const controlTitle=document.createElement('span');controlTitle.className='switch-title';controlTitle.textContent='هشدار این قطار';
+      control.append(input,track,state,controlTitle);
       const body = document.createElement('div'); body.className = 'train-body';
       const top = document.createElement('div'); top.className = 'train-top';
       const time = document.createElement('strong'); time.textContent = fa(item.time || '—');
@@ -182,8 +191,11 @@
       const meta = document.createElement('div'); meta.className = 'train-meta';
       const company = item.company && !norm(item.wagon || '').includes(norm(item.company)) ? item.company : '';
       meta.textContent = [company,'قطار ' + fa(item.number)].filter(Boolean).join('، ');
-      if (item.price !== null && Number.isFinite(Number(item.price))) meta.textContent += '\n' + Number(item.price).toLocaleString('fa-IR') + ' تومان / نفر';
       body.append(top,name,meta);
+      const price=document.createElement('div');price.className='train-price';
+      const amount=document.createElement('strong'),unit=document.createElement('span');
+      const hasPrice=item.price!==null&&item.price!==undefined&&Number.isFinite(Number(item.price));
+      amount.textContent=hasPrice?Number(item.price).toLocaleString('fa-IR'):'—';unit.textContent=hasPrice?'تومان / نفر':'قیمت اعلام نشده';price.append(amount,unit);body.append(price);
       if (item.label && item.eligible === false && !['sold_out','not_followed'].includes(item.reason)) {
         const reason = document.createElement('p'); reason.className = 'notification-reason';
         reason.textContent = item.reason === 'capacity' && trip ? 'حداقل ' + fa(trip.count) + ' صندلی لازم است.' : fa(item.label); body.append(reason);
@@ -202,8 +214,11 @@
     catalog = next; mode = next.mode; selected = new Set(next.selected); excluded = new Set(next.excluded || []);
     const trip = boot.trips.find(item => item.id === next.trip_id);
     const route = document.createElement('span'); route.className = 'route-name'; route.textContent = trip?.route_title || next.route_title;
-    const detail = document.createElement('span'); detail.className = 'route-detail'; detail.textContent = dateText(next.date) + (trip ? '، ' + fa(trip.count) + ' صندلی' : '');
-    $('alert-trip').replaceChildren(route,detail);
+    const detail = document.createElement('span'); detail.className = 'route-detail';
+    detail.textContent=trip?[fa(trip.count)+' صندلی',['عادی','ویژه برادران','ویژه خواهران'][trip.type],trip.coupe?'کوپهٔ دربست':'',trip.allow_partial_capacity?'ظرفیت کمتر هم مجاز':'فقط ظرفیت کافی'].filter(Boolean).join('، '):'انتخاب هشدار برای این مسیر';
+    const date=document.createElement('span');date.className='journey-date';date.setAttribute('aria-label',dateText(next.date));
+    const parts=next.date.split('-').map(Number),day=document.createElement('strong'),monthName=document.createElement('span');day.textContent=fa(parts[2]);monthName.textContent=months[parts[1]-1]+' '+fa(parts[0]);date.append(day,monthName);
+    $('alert-trip').replaceChildren(route,detail,date);
     const diagnostics = [next.updated_at ? 'دریافت موجودی: ' + new Date(next.updated_at * 1000).toLocaleString('fa-IR') + (next.stale ? '؛ ظرفیت ممکن است تغییر کرده باشد.' : '') : 'موجودی هنوز دریافت نشده است.'];
     diagnostics.push(next.last_poll ? 'بررسی ارسال: ' + new Date(Number(next.last_poll.checked_at) * 1000).toLocaleString('fa-IR') : 'هنوز بررسی ارسال برای این سفر ثبت نشده است.');
     if (next.worker?.error) diagnostics.push('آخرین بررسی خودکار با خطا پایان یافته است.');
@@ -279,12 +294,12 @@
       if (alertSaveStatus === 'error') notice(alertSyncUnknown ? 'ارتباط برقرار نشد. وضعیت قبلی نمایش داده می‌شود؛ ثبت تغییر را دوباره بررسی کن.' : error.message,true);
     } finally {
       setBusy(false); updateAlertCount();
-      if (operation.kind === 'train') document.querySelector('[data-train-key="' + operation.key + '"]')?.focus({preventScroll:true});
+      if (operation.kind === 'train') (document.querySelector('[data-train-key="' + operation.key + '"]')||$('filter-'+trainFilter)).focus({preventScroll:true});
     }
   }
   async function openAlerts(id) {
     if (busy || (alertDirty && !mayLeave())) return;
-    alertDirty = false; pendingAlertOperation = null; alertSaveStatus = 'saved'; alertSyncUnknown = false;
+    alertDirty = false; pendingAlertOperation = null; alertSaveStatus = 'saved'; alertSyncUnknown = false;trainFilter='all';$('train-search').value='';
     if (!showView('alerts')) return;
     $('alert-controls').hidden = true; $('alert-trip').textContent = 'در حال دریافت قطارها…'; setBusy(true);
     try { setCatalog(await api('load',{trip_id:id})); }
@@ -305,6 +320,7 @@
   $('previous-month').onclick=()=>changeMonth(-1);$('next-month').onclick=()=>changeMonth(1);$('minus').onclick=()=>{if(count>1){count--;renderCount();if(!editTrip){draft.count=count;persist();}}};$('plus').onclick=()=>{if(count<12){count++;renderCount();if(!editTrip){draft.count=count;persist();}}};
   $('step-2').addEventListener('input',()=>{if(editTrip){preferencesDirty=true;markClose();return;}try{Object.assign(draft,readPreferences());persist();}catch(_){} });
   $('new-trip').onclick=freshCreate;$('success-trips').onclick=()=>showView('trips');$('success-alerts').onclick=()=>openAlerts(createdTrip.id);$('alerts-back').onclick=()=>showView('trips');$('save-alerts').onclick=saveAlerts;$('refresh-trains').onclick=refreshCatalog;$('train-search').oninput=()=>catalog&&renderTrains();
+  ['all','on','stock'].forEach(key=>$('filter-'+key).onclick=()=>{if(!catalog||busy)return;trainFilter=key;renderTrains();});
   document.querySelectorAll('[name=alert-mode]').forEach(input=>input.onchange=()=>{if(busy)return;return persistAlertChange({kind:'mode',mode:input.value});});
   document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{if(!boot||busy)return;const next=b.dataset.nav;if(next==='create')freshCreate();else if(next==='alerts'){if(!boot.trips.length){showView('trips');notice('اول یک سفر ثبت کن؛ بعد قطارهایش را انتخاب کن.');}else{showView('trips');notice('سفر موردنظر را برای تنظیم هشدار انتخاب کن.');}}else showView(next);});
   document.querySelector('.brand-mark').onclick=e=>{e.preventDefault();if(boot)freshCreate();};
