@@ -35,7 +35,7 @@ try {
     $address = stream_socket_get_name($socket, false);
     fclose($socket);
     $base = 'http://' . $address;
-    foreach (['check_tickets.php', 'cron_probe.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
+    foreach (['check_tickets.php', 'send_queue.php', 'cron_probe.php', 'cron_runtime.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
         'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
@@ -55,6 +55,7 @@ if ($path === '/telegram-alerts.php') { require __DIR__ . '/telegram-alerts.php'
 if ($path === '/telegram-app.php') { require __DIR__ . '/telegram-app.php'; return; }
 if ($path === '/ticket-worker-health.php') { require __DIR__.'/ticket-worker-health.php'; return; }
 if ($path === '/cron_probe.php' || $path === '/ticket-cron-probe-result.php') { require __DIR__.$path; return; }
+if (in_array($path,['/check_tickets.php','/runFetchTickets.php','/send_queue.php'],true)) { require __DIR__.$path; return; }
 if (preg_match('/\.(css|js|woff2)$/D',$path)) { http_response_code(403); echo 'Forbidden'; return; }
 $payload = $_POST;
 if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0) {
@@ -701,6 +702,45 @@ PHP);
     verify($report['data']['probe']['sqlite'] && $report['data']['probe']['curl'] && $report['data']['probe']['worker_file_exists'],'Probe checks the cron extensions and worker file');
     verify(count($readRequests())===$before && file_get_contents($temp.'/ticket-worker-health.php')===$workerBefore,'A probe cannot fetch inventory, send messages or pretend the ticket worker ran');
     $publicProbe=$publicGet('/ticket-cron-probe-result.php');verify($publicProbe[0]===404 && $publicProbe[1]==='','Probe runtime information is not publicly readable');
+    foreach(['/check_tickets.php','/runFetchTickets.php','/send_queue.php'] as $entry) {
+        verify($publicGet($entry)[0]===403,'Cron entry points must remain inaccessible over HTTP: '.$entry);
+    }
+    $cgiBinary=dirname(PHP_BINARY).'/php-cgi'.(PHP_OS_FAMILY==='Windows'?'.exe':'');
+    if (is_file($cgiBinary)) {
+        $cgi=[$cgiBinary,'-n','-d','extension_dir='.ini_get('extension_dir'),'-d','extension=sqlite3','-d','extension=curl'];
+        $runCgi=static function(string $entry,?array $environment=null)use($cgi,$temp):array {
+            $command=array_merge($cgi,[$temp.'/'.$entry]);
+            if(isset($environment['REQUEST_METHOD'])) {
+                $command=$cgi;$environment['SCRIPT_FILENAME']=$temp.'/'.$entry;$environment['SCRIPT_NAME']='/'.$entry;
+            }
+            $process=proc_open($command,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,$temp,$environment);
+            fclose($pipes[0]);$output=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
+            return [proc_close($process),$output,$errors];
+        };
+        $before=count($readRequests());
+        [$exit,$output,$errors]=$runCgi('check_tickets.php');
+        verify($exit===0 && $errors==='' && !str_contains($output,'403') && !str_contains($output,'Fatal'),'Actual local CGI worker must reach ticket processing');
+        $cgiHealth=json_decode(substr(file_get_contents($temp.'/ticket-worker-health.php'),strlen("<?php http_response_code(404); exit; ?>\n")),true);
+        verify($cgiHealth['sapi']==='cgi-fcgi' && $cgiHealth['stage']==='finished' && $cgiHealth['error']===null,'Actual CGI execution must record a successful worker checkpoint');
+        verify(count($newMessages($before))>=2,'CGI worker must send eligible ticket and reservation-button messages');
+        file_put_contents($temp.'/seed-queue.php', <<<'PHP'
+<?php
+define('TRAIN_TICKET_BOT_LIBRARY_ONLY',true);require __DIR__.'/bot.php';
+$db=initQueueDatabase();$db->exec("INSERT INTO message_queue(chat_id,message) VALUES('101','Queue CGI test')");
+PHP);
+        runPhp(array_merge($php,[$temp.'/seed-queue.php']),$temp);
+        $before=count($readRequests());[$exit,$output,$errors]=$runCgi('send_queue.php');
+        verify($exit===0 && $errors==='' && count($newMessages($before))===1,'Actual local CGI queue worker sends its queued message');
+        $before=count($readRequests());
+        $httpEnvironment=array_merge(getenv(),['REQUEST_METHOD'=>'GET','REMOTE_ADDR'=>'127.0.0.1','HTTP_HOST'=>'localhost',
+            'SERVER_PROTOCOL'=>'HTTP/1.1','GATEWAY_INTERFACE'=>'CGI/1.1','REDIRECT_STATUS'=>'1']);
+        foreach(['check_tickets.php','runFetchTickets.php','send_queue.php'] as $entry) {
+            [$exit,$output,$errors]=$runCgi($entry,$httpEnvironment);
+            verify($exit===0 && $errors==='' && str_contains($output,'403'),'Actual CGI HTTP requests must remain forbidden: '.$entry);
+        }
+        verify(count($readRequests())===$before,'Forbidden CGI HTTP requests cannot fetch inventory or send messages');
+        echo "PASS Actual CGI cron: ticket and queue delivery, runtime checkpoint and HTTP denial\n";
+    }
     echo "PASS Script-only cron probe: local runtime, signed report, no bot calls and protected result\n";
     echo "PASS Delivery repair: malformed and legacy passenger lists, owned web diagnostics, cron checkpoint and visible reservation failures\n";
     echo "PASS Immediate switches: ownership, full keys, boolean validation, idempotent retries and no upstream fan-out\n";

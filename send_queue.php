@@ -1,6 +1,7 @@
 <?php
 
-if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+require_once __DIR__.'/cron_runtime.php';
+requireLocalPhpCronRuntime();
 chdir(__DIR__);
 $lock=fopen(__DIR__.'/message-queue.lock','c');
 if(!$lock || !flock($lock,LOCK_EX|LOCK_NB)){exit;}

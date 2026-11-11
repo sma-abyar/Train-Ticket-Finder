@@ -1,6 +1,7 @@
 <?php
 // A local PHP-script-only cron probe. No bot, .env, database or network calls.
-if (isset($_SERVER['REQUEST_METHOD']) || isset($_SERVER['REMOTE_ADDR']) || isset($_SERVER['HTTP_HOST'])) {
+if (isset($_SERVER['REQUEST_METHOD']) || isset($_SERVER['REMOTE_ADDR']) || isset($_SERVER['HTTP_HOST'])
+    || isset($_SERVER['SERVER_PROTOCOL']) || isset($_SERVER['GATEWAY_INTERFACE'])) {
     http_response_code(403);
     exit;
 }
