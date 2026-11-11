@@ -29,6 +29,19 @@ function ticketWorkerHealth(): ?array
     return is_array($data)?array_intersect_key($data,array_flip(['started_at','finished_at','stage','error','php_version','sapi','sqlite','curl'])):null;
 }
 
+function ticketCronProbeResult(): ?array
+{
+    $path=__DIR__.'/ticket-cron-probe-result.php';
+    if (!is_file($path) || !is_readable($path)) { return null; }
+    $bytes=file_get_contents($path,false,null,0,16384);
+    if (!is_string($bytes) || !str_starts_with($bytes,TICKET_WORKER_HEALTH_PREFIX)) { return null; }
+    $data=json_decode(substr($bytes,strlen(TICKET_WORKER_HEALTH_PREFIX)),true);
+    return is_array($data)?array_intersect_key($data,array_flip([
+        'checked_at','php_version','sapi','php_binary','sqlite','curl','ea_php84_path',
+        'ea_php84_state','ea_php84_executable','worker_file_exists','folder_writable',
+    ])):null;
+}
+
 /** Caller must first verify trip ownership with signed Telegram initData. No API calls. */
 function ticketNotificationDiagnostics(SQLite3 $db, array $trip, ?int $now=null): array
 {
@@ -61,7 +74,7 @@ function ticketNotificationDiagnostics(SQLite3 $db, array $trip, ?int $now=null)
         $trains[]=['number'=>$ticket['train_number']??null,'time'=>$ticket['time']??null,'capacity'=>ticketAvailableSeats($ticket)]
             +ticketNotificationEligibility($trip,$ticket,$approved);
     }
-    return ['report_version'=>1,'server_time'=>$now,'web_php'=>PHP_VERSION,'issues'=>$issues,
+    return ['report_version'=>2,'server_time'=>$now,'web_php'=>PHP_VERSION,'issues'=>$issues,'probe'=>ticketCronProbeResult(),
         'cron'=>$health,'worker'=>$worker,'trip'=>['id'=>$id,'approved'=>$approved,'mode'=>tripFollowMode($trip),
             'required_seats'=>(int)$trip['count'],'partial_capacity'=>(bool)$trip['allow_partial_capacity']],
         'last_poll'=>$poll,'catalog_updated_at'=>$catalog['updated_at']??null,'trains'=>$trains,'delivery'=>$delivery];

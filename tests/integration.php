@@ -35,7 +35,7 @@ try {
     $address = stream_socket_get_name($socket, false);
     fclose($socket);
     $base = 'http://' . $address;
-    foreach (['check_tickets.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
+    foreach (['check_tickets.php', 'cron_probe.php', 'runFetchTickets.php', 'ticket_search.php', 'expired_trips.php', 'trip_dates.php', 'trip_preferences.php', 'trip_filter_ui.php',
         'train_follows.php', 'train_follow_bot.php', 'traveler_list_storage.php', 'notification_diagnostics.php', 'telegram_webapp_auth.php', 'telegram-alerts.php', 'telegram-alerts.html', 'telegram-alerts.css', 'telegram-alerts.js',
         'telegram-app.php','telegram-app.html','telegram-app.css','telegram-app.js','miniapp-calendar.js','miniapp_assets.php','trip_app.php','train_cities.json','telegram_delivery.php','diagnose_notifications.php'] as $file) {
         copy($root . '/' . $file, $temp . '/' . $file);
@@ -54,6 +54,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path === '/telegram-alerts.php') { require __DIR__ . '/telegram-alerts.php'; return; }
 if ($path === '/telegram-app.php') { require __DIR__ . '/telegram-app.php'; return; }
 if ($path === '/ticket-worker-health.php') { require __DIR__.'/ticket-worker-health.php'; return; }
+if ($path === '/cron_probe.php' || $path === '/ticket-cron-probe-result.php') { require __DIR__.$path; return; }
 if (preg_match('/\.(css|js|woff2)$/D',$path)) { http_response_code(403); echo 'Forbidden'; return; }
 $payload = $_POST;
 if (strpos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') === 0) {
@@ -690,6 +691,17 @@ PHP);
     [$status,$report]=$app(['init_data'=>$auth,'action'=>'diagnostics','trip_id'=>1]);
     verify($status===200 && in_array('cron_sqlite_missing',$report['data']['issues'],true) && in_array('worker_failed',$report['data']['issues'],true),'Startup failure must remain readable from web PHP without shell access');
     $publicHealth=$publicGet('/ticket-worker-health.php');verify($publicHealth[0]===404 && $publicHealth[1]==='','Checkpoint guard must hide runtime data even when requested directly');
+    $before=count($readRequests());$workerBefore=file_get_contents($temp.'/ticket-worker-health.php');
+    verify($publicGet('/cron_probe.php')[0]===403 && !is_file($temp.'/ticket-cron-probe-result.php'),'HTTP cannot trigger a local cron probe');
+    $process=proc_open(array_merge($php,[$temp.'/cron_probe.php']),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,$temp);
+    fclose($pipes[0]);$probeOutput=stream_get_contents($pipes[1]);$probeErrors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);
+    verify(proc_close($process)===0 && $probeErrors==='' && str_contains($probeOutput,'Probe result saved.'),'Script-only cron probe must record the runtime');
+    [$status,$report]=$app(['init_data'=>$auth,'action'=>'diagnostics','trip_id'=>1]);
+    verify($status===200 && $report['data']['probe']['sapi']==='cli' && $report['data']['probe']['php_version']===PHP_VERSION,'Probe runtime is readable from the signed Mini App report');
+    verify($report['data']['probe']['sqlite'] && $report['data']['probe']['curl'] && $report['data']['probe']['worker_file_exists'],'Probe checks the cron extensions and worker file');
+    verify(count($readRequests())===$before && file_get_contents($temp.'/ticket-worker-health.php')===$workerBefore,'A probe cannot fetch inventory, send messages or pretend the ticket worker ran');
+    $publicProbe=$publicGet('/ticket-cron-probe-result.php');verify($publicProbe[0]===404 && $publicProbe[1]==='','Probe runtime information is not publicly readable');
+    echo "PASS Script-only cron probe: local runtime, signed report, no bot calls and protected result\n";
     echo "PASS Delivery repair: malformed and legacy passenger lists, owned web diagnostics, cron checkpoint and visible reservation failures\n";
     echo "PASS Immediate switches: ownership, full keys, boolean validation, idempotent retries and no upstream fan-out\n";
     echo "PASS Delivery regression: long callback, raw provider punctuation, durable 429 cooldown, lower-capacity retry, acceptance status and quiet steady state\n";

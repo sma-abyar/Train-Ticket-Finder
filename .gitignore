@@ -4,3 +4,5 @@ ticket-check.lock
 __pycache__/
 ticket-worker-health.php
 .worker-health-*.php
+ticket-cron-probe-result.php
+.cron-probe-*.php
