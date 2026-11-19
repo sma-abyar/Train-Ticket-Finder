@@ -69,7 +69,13 @@ Feel free to submit issues or pull requests if you'd like to contribute to this 
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+
+You may use, modify, and distribute this software for permitted noncommercial purposes only. **Commercial use requires prior written permission from the copyright holder.**
+
+See the [`LICENSE`](LICENSE) file for the full license terms.
+
+For more information, visit the [official PolyForm Noncommercial License](https://polyformproject.org/licenses/noncommercial/1.0.0/).
 
 --- 
 
