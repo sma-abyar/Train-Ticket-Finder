@@ -1,0 +1,6 @@
+Required Notice: Copyright (c) 2026 SeyyedMohammadAli Abyar
+
+This software is made available under the PolyForm Noncommercial License 1.0.0.
+Commercial use requires separate permission from the copyright holder.
+
+License: https://polyformproject.org/licenses/noncommercial/1.0.0
